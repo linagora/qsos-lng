@@ -2,22 +2,20 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/go-github/v76/github"
 )
-
-type ProjectStats struct {
-	FirstCommitDate    time.Time
-	LastCommitDate     time.Time
-	Stars              int
-	ActiveContributors int
-}
 
 func main() {
 	if len(os.Args) != 2 {
@@ -40,15 +38,35 @@ func main() {
 		log.Fatalf("Failed to retrieve repository statistics: %v", err)
 	}
 
-	fmt.Printf("\n--- GitHub Project Statistics: %s/%s ---\n", owner, repo)
-	fmt.Printf("Date of the First Commit: %s\n", stats.FirstCommitDate.Format("2006-01-02 15:04:05 MST"))
-	fmt.Printf("Date of the Last Commit:  %s\n", stats.LastCommitDate.Format("2006-01-02 15:04:05 MST"))
-	fmt.Printf("Number of Stars:          %d\n", stats.Stars)
-	fmt.Printf("Active contributors:      %d\n", stats.ActiveContributors)
+	fmt.Printf("\n--- GitHub Project Statistics ---\n")
+	fmt.Printf("Date of the First Commit: %s\n", stats.GitHub.FirstCommitDate.Format("2006-01-02 15:04:05 MST"))
+	fmt.Printf("Date of the Last Commit:  %s\n", stats.GitHub.LastCommitDate.Format("2006-01-02 15:04:05 MST"))
+	fmt.Printf("Number of Stars:          %d\n", stats.GitHub.Stars)
+	fmt.Printf("Active contributors:      %d\n", stats.GitHub.ActiveContributors)
+	fmt.Printf("\n--- Sonarqube Statistics ---\n")
+	fmt.Printf("Number of lines of code: %d\n", stats.Sonar.LinesOfCode)
 }
 
 type Executor struct {
-	GitHub *github.Client
+	GitHub         *github.Client
+	SonarqubeURL   *url.URL
+	SonarqubeToken string
+}
+
+type ProjectStats struct {
+	GitHub *GitHubStats
+	Sonar  *SonarStats
+}
+
+type GitHubStats struct {
+	FirstCommitDate    time.Time
+	LastCommitDate     time.Time
+	Stars              int
+	ActiveContributors int
+}
+
+type SonarStats struct {
+	LinesOfCode int
 }
 
 func NewExecutorFromEnv() (*Executor, error) {
@@ -58,13 +76,44 @@ func NewExecutorFromEnv() (*Executor, error) {
 	}
 	client := github.NewClient(nil).WithAuthToken(token)
 
+	sonarqube := os.Getenv("SONARQUBE_URL")
+	if sonarqube == "" {
+		return nil, errors.New("SONARQUBE_URL environment variable is not set")
+	}
+	u, err := url.Parse(sonarqube)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot parse SONARQUBE_URL: %w", err)
+	}
+
+	sonarToken := os.Getenv("SONARQUBE_TOKEN")
+	if sonarToken == "" {
+		return nil, errors.New("SONARQUBE_TOKEN environment variable is not set")
+	}
+
 	return &Executor{
-		GitHub: client,
+		GitHub:         client,
+		SonarqubeURL:   u,
+		SonarqubeToken: sonarToken,
 	}, nil
 }
 
 func (e *Executor) GetProjectStats(owner, repo string) (*ProjectStats, error) {
-	stats := &ProjectStats{}
+	github, err := e.GetGitHubStats(owner, repo)
+	if err != nil {
+		return nil, fmt.Errorf("GitHub: %w", err)
+	}
+	sonar, err := e.GetSonarStats(owner, repo)
+	if err != nil {
+		return nil, fmt.Errorf("Sonar: %w", err)
+	}
+	return &ProjectStats{
+		GitHub: github,
+		Sonar:  sonar,
+	}, nil
+}
+
+func (e *Executor) GetGitHubStats(owner, repo string) (*GitHubStats, error) {
+	stats := &GitHubStats{}
 	ctx := context.Background()
 
 	// 1. Get Project Info (Stars, Default Branch)
@@ -141,6 +190,85 @@ func (e *Executor) GetProjectStats(owner, repo string) (*ProjectStats, error) {
 	for _, nbCommits := range uniqueContributors {
 		if nbCommits > 5 {
 			stats.ActiveContributors++
+		}
+	}
+
+	return stats, nil
+}
+
+type SonarMeasuresResponse struct {
+	Component struct {
+		Measures []struct {
+			Metric string
+			Value  string
+		}
+	}
+}
+
+func (e *Executor) GetSonarStats(owner, repo string) (*SonarStats, error) {
+	stats := &SonarStats{}
+	component := owner + "-" + repo
+	tmpDir, err := os.MkdirTemp("", component+"-")
+	if err != nil {
+		return nil, fmt.Errorf("Cannot create a temporary dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+	cmd := exec.Command("git", "clone", fmt.Sprintf("https://github.com/%s/%s.git", owner, repo), ".")
+	cmd.Dir = tmpDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("Cannot clone git repository: %w", err)
+	}
+
+	// TODO make the command configurable
+	cmd = exec.Command(
+		"docker", "run", "--rm", "--net=host",
+		"-e", fmt.Sprintf(`SONAR_HOST_URL=%s`, e.SonarqubeURL),
+		"-e", fmt.Sprintf(`SONAR_TOKEN=%s`, e.SonarqubeToken),
+		"-v", fmt.Sprintf(`%s:/usr/src`, tmpDir),
+		"sonarsource/sonar-scanner-cli",
+		fmt.Sprintf(`-Dsonar.projectKey=%s`, component),
+		"-Dsonar.sources=.",
+	)
+	cmd.Dir = tmpDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("Cannot run sonar-scanner-cli: %w", err)
+	}
+
+	cloned := *e.SonarqubeURL
+	cloned.Path = "/api/measures/component"
+	cloned.RawQuery = url.Values{
+		"component":  []string{component},
+		"metricKeys": []string{"ncloc"},
+	}.Encode()
+	req, err := http.NewRequest(http.MethodGet, cloned.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot create request: %w", err)
+	}
+	req.Header.Add("Authorization", "Bearer "+e.SonarqubeToken)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Error on request: %w", err)
+	}
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected response: %d", res.StatusCode)
+	}
+	defer res.Body.Close()
+
+	var data SonarMeasuresResponse
+	if err := json.NewDecoder(res.Body).Decode(&data); err != nil {
+		return nil, fmt.Errorf("invalid response: %w", err)
+	}
+	for _, measure := range data.Component.Measures {
+		if measure.Metric == "ncloc" {
+			loc, err := strconv.Atoi(measure.Value)
+			if err != nil {
+				return nil, fmt.Errorf("invalid ncloc value: %w", err)
+			}
+			stats.LinesOfCode = loc
 		}
 	}
 
