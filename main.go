@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -29,13 +30,12 @@ func main() {
 	}
 	owner, repo := parts[0], parts[1]
 
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		log.Fatalf("Error: GITHUB_TOKEN environment variable is not set")
+	executor, err := NewExecutorFromEnv()
+	if err != nil {
+		log.Fatalf("ERROR: %s", err)
 	}
-	client := github.NewClient(nil).WithAuthToken(token)
 
-	stats, err := getProjectStats(client, owner, repo)
+	stats, err := executor.GetProjectStats(owner, repo)
 	if err != nil {
 		log.Fatalf("Failed to retrieve repository statistics: %v", err)
 	}
@@ -47,12 +47,28 @@ func main() {
 	fmt.Printf("Active contributors:      %d\n", stats.ActiveContributors)
 }
 
-func getProjectStats(client *github.Client, owner, repo string) (*ProjectStats, error) {
+type Executor struct {
+	GitHub *github.Client
+}
+
+func NewExecutorFromEnv() (*Executor, error) {
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return nil, errors.New("GITHUB_TOKEN environment variable is not set")
+	}
+	client := github.NewClient(nil).WithAuthToken(token)
+
+	return &Executor{
+		GitHub: client,
+	}, nil
+}
+
+func (e *Executor) GetProjectStats(owner, repo string) (*ProjectStats, error) {
 	stats := &ProjectStats{}
 	ctx := context.Background()
 
 	// 1. Get Project Info (Stars, Default Branch)
-	repository, _, err := client.Repositories.Get(ctx, owner, repo)
+	repository, _, err := e.GitHub.Repositories.Get(ctx, owner, repo)
 	if err != nil {
 		return nil, fmt.Errorf("Repositories.Get failed: %w", err)
 	}
@@ -63,7 +79,7 @@ func getProjectStats(client *github.Client, owner, repo string) (*ProjectStats, 
 	defaultBranch := *repository.DefaultBranch
 
 	// 2. Get Date of the Last Commit (reverse chronological by default, page 1)
-	lastCommit, _, err := client.Repositories.ListCommits(ctx, owner, repo, &github.CommitsListOptions{
+	lastCommit, _, err := e.GitHub.Repositories.ListCommits(ctx, owner, repo, &github.CommitsListOptions{
 		SHA:         defaultBranch,
 		ListOptions: github.ListOptions{PerPage: 1},
 	})
@@ -77,7 +93,7 @@ func getProjectStats(client *github.Client, owner, repo string) (*ProjectStats, 
 	}
 
 	// 3. Get Date of the First Commit (by fetching the last page of commits)
-	_, resp, err := client.Repositories.ListCommits(ctx, owner, repo, &github.CommitsListOptions{
+	_, resp, err := e.GitHub.Repositories.ListCommits(ctx, owner, repo, &github.CommitsListOptions{
 		SHA:         defaultBranch,
 		ListOptions: github.ListOptions{PerPage: 1},
 	})
@@ -85,7 +101,7 @@ func getProjectStats(client *github.Client, owner, repo string) (*ProjectStats, 
 		return nil, fmt.Errorf("ListCommits for first commit page count failed: %w", err)
 	}
 	firstCommitPage := resp.LastPage
-	firstCommit, _, err := client.Repositories.ListCommits(ctx, owner, repo, &github.CommitsListOptions{
+	firstCommit, _, err := e.GitHub.Repositories.ListCommits(ctx, owner, repo, &github.CommitsListOptions{
 		SHA:         defaultBranch,
 		ListOptions: github.ListOptions{PerPage: 1, Page: firstCommitPage},
 	})
@@ -110,7 +126,7 @@ func getProjectStats(client *github.Client, owner, repo string) (*ProjectStats, 
 		},
 	}
 	for {
-		commits, resp, err := client.Repositories.ListCommits(ctx, owner, repo, opts)
+		commits, resp, err := e.GitHub.Repositories.ListCommits(ctx, owner, repo, opts)
 		if err != nil {
 			return nil, fmt.Errorf("ListCommits for contributors failed: %w", err)
 		}
