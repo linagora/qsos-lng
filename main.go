@@ -206,11 +206,31 @@ type SonarMeasuresResponse struct {
 }
 
 func (e *Executor) GetSonarStats(owner, repo string) (*SonarStats, error) {
-	stats := &SonarStats{}
+	if err := e.runSonarScannerCLI(owner, repo); err != nil {
+		return nil, err
+	}
+
+	// XXX Sonarqube takes some time to build the measures after the scanner
+	// has sent its result...
+	for i := 0; i < 100; i++ {
+		stats, err := e.getSonarMeasures(owner, repo)
+		if err != nil {
+			return nil, err
+		}
+		if stats.LinesOfCode > 0 {
+			return stats, nil
+		}
+		log.Printf("measures not yet available in Sonarqube")
+		time.Sleep(5 * time.Second)
+	}
+	return nil, errors.New("No measures available from Sonarqube")
+}
+
+func (e *Executor) runSonarScannerCLI(owner, repo string) error {
 	component := owner + "-" + repo
 	tmpDir, err := os.MkdirTemp("", component+"-")
 	if err != nil {
-		return nil, fmt.Errorf("Cannot create a temporary dir: %w", err)
+		return fmt.Errorf("Cannot create a temporary dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 	cmd := exec.Command("git", "clone", fmt.Sprintf("https://github.com/%s/%s.git", owner, repo), ".")
@@ -218,7 +238,7 @@ func (e *Executor) GetSonarStats(owner, repo string) (*SonarStats, error) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("Cannot clone git repository: %w", err)
+		return fmt.Errorf("Cannot clone git repository: %w", err)
 	}
 
 	// TODO make the command configurable
@@ -235,9 +255,13 @@ func (e *Executor) GetSonarStats(owner, repo string) (*SonarStats, error) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("Cannot run sonar-scanner-cli: %w", err)
+		return fmt.Errorf("Cannot run sonar-scanner-cli: %w", err)
 	}
+	return nil
+}
 
+func (e *Executor) getSonarMeasures(owner, repo string) (*SonarStats, error) {
+	component := owner + "-" + repo
 	cloned := *e.SonarqubeURL
 	cloned.Path = "/api/measures/component"
 	cloned.RawQuery = url.Values{
@@ -258,6 +282,7 @@ func (e *Executor) GetSonarStats(owner, repo string) (*SonarStats, error) {
 	}
 	defer res.Body.Close()
 
+	stats := &SonarStats{}
 	var data SonarMeasuresResponse
 	if err := json.NewDecoder(res.Body).Decode(&data); err != nil {
 		return nil, fmt.Errorf("invalid response: %w", err)
