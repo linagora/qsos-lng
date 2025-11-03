@@ -39,6 +39,7 @@ func main() {
 	fmt.Printf("Cyclomatic complexity:   %d\n", stats.Sonar.CyclomaticComplexity)
 	fmt.Printf("Cognitive complexity:    %d\n", stats.Sonar.CognitiveComplexity)
 	fmt.Printf("Number of code smells:   %d\n", stats.Sonar.CodeSmells)
+	fmt.Printf("Duplication density:     %.1f\n", stats.Sonar.DuplicationDensity)
 
 	scores := ComputeScores(stats)
 	fmt.Printf("\n--- Community ---\n")
@@ -50,5 +51,6 @@ func main() {
 	fmt.Printf("Code size:             %d\n", scores.Tech.Size)
 	fmt.Printf("Cyclomatic complexity: %d\n", scores.Tech.CyclomaticComplexity)
 	fmt.Printf("Cognitive complexity:  %d\n", scores.Tech.CognitiveComplexity)
-	fmt.Printf("Code smelss:           %d\n", scores.Tech.CodeSmells)
+	fmt.Printf("Duplication:           %d\n", scores.Tech.Duplication)
+	fmt.Printf("Code smells:           %d\n", scores.Tech.CodeSmells)
 }

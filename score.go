@@ -18,6 +18,7 @@ type TechScores struct {
 	Size                 int
 	CyclomaticComplexity int
 	CognitiveComplexity  int
+	Duplication          int
 	CodeSmells           int
 }
 
@@ -34,6 +35,7 @@ func ComputeScores(stats *ProjectStats) *ProjectScores {
 			Size:                 computeSizeScore(stats),
 			CyclomaticComplexity: computeCyclomaticComplexityScore(stats),
 			CognitiveComplexity:  computeCognitiveComplexityScore(stats),
+			Duplication:          computeDuplicationScore(stats),
 			CodeSmells:           computeCodeSmellsScore(stats),
 		},
 	}
@@ -148,6 +150,22 @@ func computeCognitiveComplexityScore(stats *ProjectStats) int {
 	case nb < 30:
 		return 3
 	case nb < 50:
+		return 2
+	default:
+		return 1
+	}
+}
+
+func computeDuplicationScore(stats *ProjectStats) int {
+	nb := stats.Sonar.DuplicationDensity
+	switch {
+	case nb < 3.0:
+		return 5
+	case nb < 5.0:
+		return 4
+	case nb < 10.0:
+		return 3
+	case nb < 20.0:
 		return 2
 	default:
 		return 1

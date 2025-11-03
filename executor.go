@@ -40,6 +40,7 @@ type SonarStats struct {
 	CodeSmells           int
 	CyclomaticComplexity int
 	CognitiveComplexity  int
+	DuplicationDensity   float64
 }
 
 func NewExecutorFromEnv() (*Executor, error) {
@@ -239,7 +240,7 @@ func (e *Executor) getSonarMeasures(owner, repo string) (*SonarStats, error) {
 	cloned.Path = "/api/measures/component"
 	cloned.RawQuery = url.Values{
 		"component":  []string{component},
-		"metricKeys": []string{"ncloc,functions,code_smells,complexity,cognitive_complexity"},
+		"metricKeys": []string{"ncloc,functions,code_smells,complexity,cognitive_complexity,duplicated_lines_density"},
 	}.Encode()
 	req, err := http.NewRequest(http.MethodGet, cloned.String(), nil)
 	if err != nil {
@@ -292,6 +293,12 @@ func (e *Executor) getSonarMeasures(owner, repo string) (*SonarStats, error) {
 				return nil, fmt.Errorf("invalid cognitive_complexity value: %w", err)
 			}
 			stats.CognitiveComplexity = nb
+		case "duplicated_lines_density":
+			nb, err := strconv.ParseFloat(measure.Value, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid duplicated_lines_density value: %w", err)
+			}
+			stats.DuplicationDensity = nb
 		}
 	}
 
