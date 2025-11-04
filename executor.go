@@ -30,16 +30,16 @@ type ProjectStats struct {
 type GitHubStats struct {
 	FirstCommitDate    time.Time
 	LastCommitDate     time.Time
-	Stars              int
-	ActiveContributors int
+	Stars              int64
+	ActiveContributors int64
 }
 
 type SonarStats struct {
-	LinesOfCode          int
-	Functions            int
-	CodeSmells           int
-	CyclomaticComplexity int
-	CognitiveComplexity  int
+	LinesOfCode          int64
+	Functions            int64
+	CodeSmells           int64
+	CyclomaticComplexity int64
+	CognitiveComplexity  int64
 	DuplicationDensity   float64
 }
 
@@ -97,7 +97,7 @@ func (e *Executor) GetGitHubStats(owner, repo string) (*GitHubStats, error) {
 	}
 
 	if repository.StargazersCount != nil {
-		stats.Stars = *repository.StargazersCount
+		stats.Stars = int64(*repository.StargazersCount)
 	}
 	defaultBranch := *repository.DefaultBranch
 
@@ -139,7 +139,7 @@ func (e *Executor) GetGitHubStats(owner, repo string) (*GitHubStats, error) {
 
 	// 4. Get Number of Contributors in the last 6 months, with at least 5 commits
 	sixMonthsAgo := time.Now().AddDate(0, -6, 0)
-	uniqueContributors := make(map[string]int)
+	uniqueContributors := make(map[string]int64)
 
 	opts := &github.CommitsListOptions{
 		Since: sixMonthsAgo,
@@ -264,31 +264,31 @@ func (e *Executor) getSonarMeasures(owner, repo string) (*SonarStats, error) {
 	for _, measure := range data.Component.Measures {
 		switch measure.Metric {
 		case "ncloc":
-			nb, err := strconv.Atoi(measure.Value)
+			nb, err := strconv.ParseInt(measure.Value, 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("invalid ncloc value: %w", err)
 			}
 			stats.LinesOfCode = nb
 		case "functions":
-			nb, err := strconv.Atoi(measure.Value)
+			nb, err := strconv.ParseInt(measure.Value, 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("invalid functions value: %w", err)
 			}
 			stats.Functions = nb
 		case "code_smells":
-			nb, err := strconv.Atoi(measure.Value)
+			nb, err := strconv.ParseInt(measure.Value, 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("invalid code_smells value: %w", err)
 			}
 			stats.CodeSmells = nb
 		case "complexity":
-			nb, err := strconv.Atoi(measure.Value)
+			nb, err := strconv.ParseInt(measure.Value, 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("invalid complexity value: %w", err)
 			}
 			stats.CyclomaticComplexity = nb
 		case "cognitive_complexity":
-			nb, err := strconv.Atoi(measure.Value)
+			nb, err := strconv.ParseInt(measure.Value, 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("invalid cognitive_complexity value: %w", err)
 			}

@@ -2,188 +2,132 @@ package main
 
 import "time"
 
+type Thresholds struct {
+	Community *CommunityThreshold
+	Tech      *TechThreshold
+}
+
+type CommunityThreshold struct {
+	Maturity     [4]int64
+	Activity     [4]int64
+	Popularity   [4]int64
+	Contributors [4]int64
+}
+
+type TechThreshold struct {
+	Size                 [4]int64
+	CyclomaticComplexity [4]int64
+	CognitiveComplexity  [4]int64
+	Duplication          [4]int64
+	CodeSmells           [4]int64
+}
+
 type ProjectScores struct {
 	Community *CommunityScores
 	Tech      *TechScores
 }
 
 type CommunityScores struct {
-	Maturity     int
-	Activity     int
-	Popularity   int
-	Contributors int
+	Maturity     int64
+	Activity     int64
+	Popularity   int64
+	Contributors int64
 }
 
 type TechScores struct {
-	Size                 int
-	CyclomaticComplexity int
-	CognitiveComplexity  int
-	Duplication          int
-	CodeSmells           int
+	Size                 int64
+	CyclomaticComplexity int64
+	CognitiveComplexity  int64
+	Duplication          int64
+	CodeSmells           int64
 }
 
-func ComputeScores(stats *ProjectStats) *ProjectScores {
-	// TODO extract config
+func ComputeScores(stats *ProjectStats, thresholds *Thresholds) *ProjectScores {
 	scores := &ProjectScores{
 		Community: &CommunityScores{
-			Maturity:     computeMaturityScore(stats),
-			Activity:     computeActivityScore(stats),
-			Popularity:   computePopularityScore(stats),
-			Contributors: computeContributorsScore(stats),
+			Maturity:     computeMaturityScore(stats, thresholds),
+			Activity:     computeActivityScore(stats, thresholds),
+			Popularity:   computePopularityScore(stats, thresholds),
+			Contributors: computeContributorsScore(stats, thresholds),
 		},
 		Tech: &TechScores{
-			Size:                 computeSizeScore(stats),
-			CyclomaticComplexity: computeCyclomaticComplexityScore(stats),
-			CognitiveComplexity:  computeCognitiveComplexityScore(stats),
-			Duplication:          computeDuplicationScore(stats),
-			CodeSmells:           computeCodeSmellsScore(stats),
+			Size:                 computeSizeScore(stats, thresholds),
+			CyclomaticComplexity: computeCyclomaticComplexityScore(stats, thresholds),
+			CognitiveComplexity:  computeCognitiveComplexityScore(stats, thresholds),
+			Duplication:          computeDuplicationScore(stats, thresholds),
+			CodeSmells:           computeCodeSmellsScore(stats, thresholds),
 		},
 	}
 	return scores
 }
 
-func computeMaturityScore(stats *ProjectStats) int {
-	elapsed := time.Since(stats.GitHub.FirstCommitDate)
-	day := 24 * 60 * 60 * time.Second
-	switch {
-	case elapsed > 5*365*day:
-		return 5
-	case elapsed > 2*365*day:
-		return 4
-	case elapsed > 1*365*day:
-		return 3
-	case elapsed > 3*30*day:
-		return 2
-	default:
-		return 1
-	}
+func computeMaturityScore(stats *ProjectStats, thresholds *Thresholds) int64 {
+	elapsed := time.Since(stats.GitHub.FirstCommitDate).Nanoseconds()
+	return computeScore(elapsed, thresholds.Community.Maturity, BiggerIsBetter)
 }
 
-func computeActivityScore(stats *ProjectStats) int {
-	elapsed := time.Since(stats.GitHub.LastCommitDate)
-	day := 24 * 60 * 60 * time.Second
-	switch {
-	case elapsed < 30*day:
-		return 5
-	case elapsed < 6*30*day:
-		return 4
-	case elapsed < 1*365*day:
-		return 3
-	case elapsed < 2*365*day:
-		return 2
-	default:
-		return 1
-	}
+func computeActivityScore(stats *ProjectStats, thresholds *Thresholds) int64 {
+	elapsed := time.Since(stats.GitHub.LastCommitDate).Nanoseconds()
+	return computeScore(elapsed, thresholds.Community.Activity, SmallerIsBetter)
 }
 
-func computePopularityScore(stats *ProjectStats) int {
+func computePopularityScore(stats *ProjectStats, thresholds *Thresholds) int64 {
 	nb := stats.GitHub.Stars
-	switch {
-	case nb > 2_000:
-		return 5
-	case nb > 500:
-		return 4
-	case nb > 100:
-		return 3
-	case nb > 10:
-		return 2
-	default:
-		return 1
-	}
+	return computeScore(nb, thresholds.Community.Popularity, BiggerIsBetter)
 }
 
-func computeContributorsScore(stats *ProjectStats) int {
+func computeContributorsScore(stats *ProjectStats, thresholds *Thresholds) int64 {
 	nb := stats.GitHub.ActiveContributors
-	switch {
-	case nb > 50:
-		return 5
-	case nb > 20:
-		return 4
-	case nb > 5:
-		return 3
-	case nb > 1:
-		return 2
-	default:
-		return 1
-	}
+	return computeScore(nb, thresholds.Community.Contributors, BiggerIsBetter)
 }
 
-func computeSizeScore(stats *ProjectStats) int {
+func computeSizeScore(stats *ProjectStats, thresholds *Thresholds) int64 {
 	nb := stats.Sonar.LinesOfCode
-	switch {
-	case nb < 1_000:
-		return 5
-	case nb < 10_000:
-		return 4
-	case nb < 100_000:
-		return 3
-	case nb < 1_000_000:
-		return 2
-	default:
-		return 1
-	}
+	return computeScore(nb, thresholds.Tech.Size, SmallerIsBetter)
 }
 
-func computeCyclomaticComplexityScore(stats *ProjectStats) int {
-	nb := stats.Sonar.CyclomaticComplexity / stats.Sonar.Functions
-	switch {
-	case nb < 10:
-		return 5
-	case nb < 20:
-		return 4
-	case nb < 30:
-		return 3
-	case nb < 50:
-		return 2
-	default:
-		return 1
-	}
+func computeCyclomaticComplexityScore(stats *ProjectStats, thresholds *Thresholds) int64 {
+	nb := int64(stats.Sonar.CyclomaticComplexity / stats.Sonar.Functions)
+	return computeScore(nb, thresholds.Tech.CyclomaticComplexity, SmallerIsBetter)
 }
 
-func computeCognitiveComplexityScore(stats *ProjectStats) int {
-	nb := stats.Sonar.CognitiveComplexity / stats.Sonar.Functions
-	switch {
-	case nb < 10:
-		return 5
-	case nb < 20:
-		return 4
-	case nb < 30:
-		return 3
-	case nb < 50:
-		return 2
-	default:
-		return 1
-	}
+func computeCognitiveComplexityScore(stats *ProjectStats, thresholds *Thresholds) int64 {
+	nb := int64(stats.Sonar.CognitiveComplexity / stats.Sonar.Functions)
+	return computeScore(nb, thresholds.Tech.CognitiveComplexity, SmallerIsBetter)
 }
 
-func computeDuplicationScore(stats *ProjectStats) int {
-	nb := stats.Sonar.DuplicationDensity
-	switch {
-	case nb < 3.0:
-		return 5
-	case nb < 5.0:
-		return 4
-	case nb < 10.0:
-		return 3
-	case nb < 20.0:
-		return 2
-	default:
-		return 1
-	}
+func computeDuplicationScore(stats *ProjectStats, thresholds *Thresholds) int64 {
+	nb := int64(stats.Sonar.DuplicationDensity)
+	return computeScore(nb, thresholds.Tech.Duplication, SmallerIsBetter)
 }
 
-func computeCodeSmellsScore(stats *ProjectStats) int {
-	nb := stats.Sonar.LinesOfCode / stats.Sonar.CodeSmells
+func computeCodeSmellsScore(stats *ProjectStats, thresholds *Thresholds) int64 {
+	nb := int64(stats.Sonar.LinesOfCode / stats.Sonar.CodeSmells)
+	return computeScore(nb, thresholds.Tech.CodeSmells, SmallerIsBetter)
+}
+
+type Direction bool
+
+const (
+	BiggerIsBetter  Direction = true
+	SmallerIsBetter Direction = false
+)
+
+func computeScore(nb int64, thresholds [4]int64, direction Direction) int64 {
+	scale := [5]int64{1, 2, 3, 4, 5}
+	if direction == SmallerIsBetter {
+		scale = [5]int64{5, 4, 3, 2, 1}
+	}
 	switch {
-	case nb < 50:
-		return 5
-	case nb < 200:
-		return 4
-	case nb < 500:
-		return 3
-	case nb < 1000:
-		return 2
+	case nb > thresholds[3]:
+		return scale[4]
+	case nb > thresholds[2]:
+		return scale[3]
+	case nb > thresholds[1]:
+		return scale[2]
+	case nb > thresholds[0]:
+		return scale[1]
 	default:
-		return 1
+		return scale[0]
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -28,6 +29,25 @@ func main() {
 		log.Fatalf("Failed to retrieve repository statistics: %v", err)
 	}
 
+	day := (24 * 60 * 60 * time.Second).Nanoseconds()
+	month := 30 * day
+	year := 365 * day
+	thresholds := &Thresholds{
+		Community: &CommunityThreshold{
+			Maturity:     [4]int64{3 * month, 1 * year, 3 * year, 5 * year},
+			Activity:     [4]int64{1 * month, 6 * month, 1 * year, 2 * year},
+			Popularity:   [4]int64{10, 100, 500, 2_000},
+			Contributors: [4]int64{1, 5, 20, 50},
+		},
+		Tech: &TechThreshold{
+			Size:                 [4]int64{1_000, 10_000, 100_000, 1_000_000},
+			CyclomaticComplexity: [4]int64{10, 20, 30, 50},
+			CognitiveComplexity:  [4]int64{10, 20, 30, 50},
+			Duplication:          [4]int64{3, 5, 10, 20},
+			CodeSmells:           [4]int64{50, 200, 500, 1_000},
+		},
+	}
+
 	fmt.Printf("\n--- GitHub Project Statistics ---\n")
 	fmt.Printf("Date of the First Commit: %s\n", stats.GitHub.FirstCommitDate.Format("2006-01-02 15:04:05 MST"))
 	fmt.Printf("Date of the Last Commit:  %s\n", stats.GitHub.LastCommitDate.Format("2006-01-02 15:04:05 MST"))
@@ -41,7 +61,7 @@ func main() {
 	fmt.Printf("Number of code smells:   %d\n", stats.Sonar.CodeSmells)
 	fmt.Printf("Duplication density:     %.1f\n", stats.Sonar.DuplicationDensity)
 
-	scores := ComputeScores(stats)
+	scores := ComputeScores(stats, thresholds)
 	fmt.Printf("\n--- Community ---\n")
 	fmt.Printf("Maturity:     %d\n", scores.Community.Maturity)
 	fmt.Printf("Activity:     %d\n", scores.Community.Activity)
