@@ -103,7 +103,7 @@ func computeDuplicationScore(stats *ProjectStats, thresholds *Thresholds) int64 
 
 func computeCodeSmellsScore(stats *ProjectStats, thresholds *Thresholds) int64 {
 	nb := int64(stats.Sonar.LinesOfCode / stats.Sonar.CodeSmells)
-	return computeScore(nb, thresholds.Tech.CodeSmells, SmallerIsBetter)
+	return computeScore(nb, thresholds.Tech.CodeSmells, BiggerIsBetter)
 }
 
 type Direction bool
