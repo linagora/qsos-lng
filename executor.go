@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/go-github/v76/github"
@@ -154,6 +155,9 @@ func (e *Executor) GetGitHubStats(owner, repo string) (*GitHubStats, error) {
 			return nil, fmt.Errorf("ListCommits for contributors failed: %w", err)
 		}
 		for _, commit := range commits {
+			if strings.HasSuffix(*commit.Commit.Author.Name, "[bot]") {
+				continue
+			}
 			uniqueContributors[*commit.Commit.Author.Email] += 1
 		}
 		if resp.NextPage == 0 {
@@ -162,7 +166,7 @@ func (e *Executor) GetGitHubStats(owner, repo string) (*GitHubStats, error) {
 		opts.Page = resp.NextPage
 	}
 	for _, nbCommits := range uniqueContributors {
-		if nbCommits > 5 {
+		if nbCommits > 3 {
 			stats.ActiveContributors++
 		}
 	}
