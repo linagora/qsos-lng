@@ -34,15 +34,15 @@ func main() {
 	year := 365 * day
 	thresholds := &Thresholds{
 		Community: &CommunityThreshold{
-			Maturity:     [4]int64{3 * month, 1 * year, 3 * year, 5 * year},
+			Maturity:     [4]int64{1 * year, 5 * year, 10 * year, 20 * year},
 			Activity:     [4]int64{1 * month, 6 * month, 1 * year, 2 * year},
-			Popularity:   [4]int64{10, 100, 500, 2_000},
+			Popularity:   [4]int64{5_000, 20_000, 40_000, 80_000},
 			Contributors: [4]int64{1, 5, 20, 50},
 		},
 		Tech: &TechThreshold{
 			Size:                 [4]int64{1_000, 10_000, 100_000, 1_000_000},
 			CyclomaticComplexity: [4]int64{10, 20, 30, 50},
-			CognitiveComplexity:  [4]int64{10, 20, 30, 50},
+			CognitiveComplexity:  [4]int64{1, 3, 5, 10},
 			Duplication:          [4]int64{3, 5, 10, 20},
 			CodeSmells:           [4]int64{50, 200, 500, 1_000},
 		},
