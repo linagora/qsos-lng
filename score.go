@@ -1,6 +1,8 @@
 package main
 
-import "time"
+import (
+	"time"
+)
 
 type Thresholds struct {
 	Community *CommunityThreshold
@@ -87,11 +89,13 @@ func computeSizeScore(stats *ProjectStats, thresholds *Thresholds) int64 {
 }
 
 func computeCyclomaticComplexityScore(stats *ProjectStats, thresholds *Thresholds) int64 {
-	nb := int64(stats.Sonar.CyclomaticComplexity / stats.Sonar.Functions)
-	return computeScore(nb, thresholds.Tech.CyclomaticComplexity, SmallerIsBetter)
+	// What is the percentage of functions with high complexity?
+	pct := int64(100.0 * stats.Sonar.BrainOverload / stats.Sonar.Functions)
+	return computeScore(pct, thresholds.Tech.CyclomaticComplexity, SmallerIsBetter)
 }
 
 func computeCognitiveComplexityScore(stats *ProjectStats, thresholds *Thresholds) int64 {
+	// What is the average cognitive complexity per function?
 	nb := int64(stats.Sonar.CognitiveComplexity / stats.Sonar.Functions)
 	return computeScore(nb, thresholds.Tech.CognitiveComplexity, SmallerIsBetter)
 }
@@ -102,6 +106,7 @@ func computeDuplicationScore(stats *ProjectStats, thresholds *Thresholds) int64 
 }
 
 func computeCodeSmellsScore(stats *ProjectStats, thresholds *Thresholds) int64 {
+	// What is the average number of lines between 2 code smells?
 	nb := int64(stats.Sonar.LinesOfCode / stats.Sonar.CodeSmells)
 	return computeScore(nb, thresholds.Tech.CodeSmells, BiggerIsBetter)
 }

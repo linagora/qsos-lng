@@ -39,9 +39,14 @@ type SonarStats struct {
 	LinesOfCode          int64
 	Functions            int64
 	CodeSmells           int64
+	BrainOverload        int64
 	CyclomaticComplexity int64
 	CognitiveComplexity  int64
 	DuplicationDensity   float64
+}
+
+type SonarIssues struct {
+	Total int64
 }
 
 func NewExecutorFromEnv() (*Executor, error) {
@@ -201,7 +206,7 @@ func (e *Executor) GetSonarStats(owner, repo string) (*SonarStats, error) {
 	// XXX Sonarqube takes some time to build the measures after the scanner
 	// has sent its result...
 	for i := 0; i < 100; i++ {
-		stats, err := e.getSonarMeasures(owner, repo)
+		stats, err := e.getSonarStats(owner, repo)
 		if err != nil {
 			return nil, err
 		}
@@ -209,7 +214,7 @@ func (e *Executor) GetSonarStats(owner, repo string) (*SonarStats, error) {
 			return stats, nil
 		}
 		log.Printf("measures not yet available in Sonarqube")
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 	return nil, errors.New("No measures available from Sonarqube")
 }
@@ -248,8 +253,24 @@ func (e *Executor) runSonarScannerCLI(owner, repo string) error {
 	return nil
 }
 
-func (e *Executor) getSonarMeasures(owner, repo string) (*SonarStats, error) {
+func (e *Executor) getSonarStats(owner, repo string) (*SonarStats, error) {
 	component := owner + "-" + repo
+	stats, err := e.getSonarMeasures(component)
+	if err != nil {
+		return nil, fmt.Errorf("cannot get sonar stats: %w", err)
+	}
+	if stats.LinesOfCode == 0 {
+		return stats, nil
+	}
+	nb, err := e.getSonarBrainOverloadIssues(component)
+	if err != nil {
+		return nil, fmt.Errorf("cannot get sonar issues: %w", err)
+	}
+	stats.BrainOverload = nb
+	return stats, nil
+}
+
+func (e *Executor) getSonarMeasures(component string) (*SonarStats, error) {
 	cloned := *e.SonarqubeURL
 	cloned.Path = "/api/measures/component"
 	cloned.RawQuery = url.Values{
@@ -317,4 +338,32 @@ func (e *Executor) getSonarMeasures(owner, repo string) (*SonarStats, error) {
 	}
 
 	return stats, nil
+}
+
+func (e *Executor) getSonarBrainOverloadIssues(component string) (int64, error) {
+	cloned := *e.SonarqubeURL
+	cloned.Path = "/api/issues/search"
+	cloned.RawQuery = url.Values{
+		"components": []string{component},
+		"tags":       []string{"brain-overload"},
+	}.Encode()
+	req, err := http.NewRequest(http.MethodGet, cloned.String(), nil)
+	if err != nil {
+		return 0, fmt.Errorf("Cannot create request: %w", err)
+	}
+	req.Header.Add("Authorization", "Bearer "+e.SonarqubeToken)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("Error on request: %w", err)
+	}
+	if res.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("unexpected response: %d", res.StatusCode)
+	}
+	defer res.Body.Close()
+
+	var data SonarIssues
+	if err := json.NewDecoder(res.Body).Decode(&data); err != nil {
+		return 0, fmt.Errorf("invalid response: %w", err)
+	}
+	return data.Total, nil
 }

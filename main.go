@@ -41,7 +41,7 @@ func main() {
 		},
 		Tech: &TechThreshold{
 			Size:                 [4]int64{1_000, 10_000, 100_000, 1_000_000},
-			CyclomaticComplexity: [4]int64{10, 20, 30, 50},
+			CyclomaticComplexity: [4]int64{1, 5, 10, 20},
 			CognitiveComplexity:  [4]int64{1, 3, 5, 10},
 			Duplication:          [4]int64{3, 5, 10, 20},
 			CodeSmells:           [4]int64{50, 200, 500, 1_000},
@@ -58,6 +58,7 @@ func main() {
 	fmt.Printf("Number of functions:     %d\n", stats.Sonar.Functions)
 	fmt.Printf("Cyclomatic complexity:   %d\n", stats.Sonar.CyclomaticComplexity)
 	fmt.Printf("Cognitive complexity:    %d\n", stats.Sonar.CognitiveComplexity)
+	fmt.Printf("Brain-overload issues:   %d\n", stats.Sonar.BrainOverload)
 	fmt.Printf("Number of code smells:   %d\n", stats.Sonar.CodeSmells)
 	fmt.Printf("Duplication density:     %.1f\n", stats.Sonar.DuplicationDensity)
 
