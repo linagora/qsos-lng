@@ -210,13 +210,13 @@ func (e *Executor) GetSonarStats(owner, repo string) (*SonarStats, error) {
 		if err != nil {
 			return nil, err
 		}
-		if stats.LinesOfCode > 0 {
+		if stats.LinesOfCode > 0 && stats.BrainOverload > 0 {
 			return stats, nil
 		}
 		log.Printf("measures not yet available in Sonarqube")
 		time.Sleep(1 * time.Second)
 	}
-	return nil, errors.New("No measures available from Sonarqube")
+	return e.getSonarStats(owner, repo)
 }
 
 func (e *Executor) runSonarScannerCLI(owner, repo string) error {
