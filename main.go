@@ -61,6 +61,10 @@ func main() {
 	fmt.Printf("Brain-overload issues:   %d\n", stats.Sonar.BrainOverload)
 	fmt.Printf("Number of code smells:   %d\n", stats.Sonar.CodeSmells)
 	fmt.Printf("Duplication density:     %.1f\n", stats.Sonar.DuplicationDensity)
+	fmt.Printf("\n--- ScoreCard checks ---\n")
+	for _, check := range stats.ScoreCard.Checks {
+		fmt.Printf("%-24s: %d\n", check.Name, check.Score)
+	}
 
 	scores := ComputeScores(stats, thresholds)
 	fmt.Printf("\n--- Community ---\n")

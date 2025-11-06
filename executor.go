@@ -19,13 +19,15 @@ import (
 
 type Executor struct {
 	GitHub         *github.Client
+	GitHubToken    string
 	SonarqubeURL   *url.URL
 	SonarqubeToken string
 }
 
 type ProjectStats struct {
-	GitHub *GitHubStats
-	Sonar  *SonarStats
+	GitHub    *GitHubStats
+	Sonar     *SonarStats
+	ScoreCard *ScoreCardStats
 }
 
 type GitHubStats struct {
@@ -45,8 +47,11 @@ type SonarStats struct {
 	DuplicationDensity   float64
 }
 
-type SonarIssues struct {
-	Total int64
+type ScoreCardStats struct {
+	Checks []struct {
+		Name  string
+		Score int64
+	}
 }
 
 func NewExecutorFromEnv() (*Executor, error) {
@@ -72,6 +77,7 @@ func NewExecutorFromEnv() (*Executor, error) {
 
 	return &Executor{
 		GitHub:         client,
+		GitHubToken:    token,
 		SonarqubeURL:   u,
 		SonarqubeToken: sonarToken,
 	}, nil
@@ -82,13 +88,18 @@ func (e *Executor) GetProjectStats(owner, repo string) (*ProjectStats, error) {
 	if err != nil {
 		return nil, fmt.Errorf("GitHub: %w", err)
 	}
+	card, err := e.GetScoreCardStats(owner, repo)
+	if err != nil {
+		return nil, fmt.Errorf("ScoreCard: %w", err)
+	}
 	sonar, err := e.GetSonarStats(owner, repo)
 	if err != nil {
 		return nil, fmt.Errorf("Sonar: %w", err)
 	}
 	return &ProjectStats{
-		GitHub: github,
-		Sonar:  sonar,
+		GitHub:    github,
+		ScoreCard: card,
+		Sonar:     sonar,
 	}, nil
 }
 
@@ -177,6 +188,28 @@ func (e *Executor) GetGitHubStats(owner, repo string) (*GitHubStats, error) {
 	}
 
 	return stats, nil
+}
+
+func (e *Executor) GetScoreCardStats(owner, repo string) (*ScoreCardStats, error) {
+	// TODO make the command configurable
+	cmd := exec.Command(
+		"docker", "run", "--rm", "--net=host",
+		"-e", fmt.Sprintf(`GITHUB_AUTH_TOKEN=%s`, e.GitHubToken),
+		"gcr.io/openssf/scorecard:stable",
+		fmt.Sprintf(`--repo=https://github.com/%s/%s`, owner, repo),
+		"--format=json",
+	)
+	cmd.Stderr = os.Stderr
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("Cannot run scorecard: %w", err)
+	}
+
+	var card ScoreCardStats
+	if err := json.Unmarshal(output, &card); err != nil {
+		return nil, fmt.Errorf("Unexpected output from scorecard: %w", err)
+	}
+	return &card, nil
 }
 
 type SonarMeasuresResponse struct {
@@ -338,6 +371,10 @@ func (e *Executor) getSonarMeasures(component string) (*SonarStats, error) {
 	}
 
 	return stats, nil
+}
+
+type SonarIssues struct {
+	Total int64
 }
 
 func (e *Executor) getSonarBrainOverloadIssues(component string) (int64, error) {
