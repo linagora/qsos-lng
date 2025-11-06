@@ -6,3 +6,9 @@
    - `SONARQUBE_URL` for the URL of a SonarQube server
    - `SONARQUBE_TOKEN` for a token of this server
 3. Run `go run . minio/minio`
+
+## Notes
+
+Running sonar-scanner-cli can be quite slow. It may be practical to skip this
+step in development, when we already have data in SonarQube. For that, we can
+use the env variable `SKIP_SONAR_SCANNER=true` when running the analyzer.
