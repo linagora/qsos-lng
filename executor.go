@@ -259,7 +259,8 @@ func (e *Executor) runSonarScannerCLI(owner, repo string) error {
 		return fmt.Errorf("Cannot create a temporary dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
-	cmd := exec.Command("git", "clone", fmt.Sprintf("https://github.com/%s/%s.git", owner, repo), ".")
+	cmd := exec.Command("git", "clone", "--depth=1",
+		fmt.Sprintf("https://github.com/%s/%s.git", owner, repo), ".")
 	cmd.Dir = tmpDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
