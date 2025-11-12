@@ -48,6 +48,31 @@ func main() {
 		},
 	}
 
+	weights := &Weights{
+		// https://scorecard.dev/#the-checks
+		// 1 for low upto 4 for critical
+		ScoreCard: map[string]int64{
+			"Vulnerabilities":        3,
+			"Dependency-Update-Tool": 3,
+			"Maintained":             3,
+			"Security-Policy":        2,
+			"License":                1,
+			"CII-Best-Practices":     1,
+			"CI-Tests":               1,
+			"Fuzzing":                2,
+			"SAST":                   2,
+			"Binary-Artifacts":       3,
+			"Branch-Protection":      3,
+			"Dangerous-Workflow":     4,
+			"Code-Review":            3,
+			"Contributors":           1,
+			"Pinned-Dependencies":    2,
+			"Token-Permissions":      3,
+			"Packaging":              2,
+			"Signed-Releases":        3,
+		},
+	}
+
 	fmt.Printf("\n--- GitHub Project Statistics ---\n")
 	fmt.Printf("Date of the First Commit: %s\n", stats.GitHub.FirstCommitDate.Format("2006-01-02 15:04:05 MST"))
 	fmt.Printf("Date of the Last Commit:  %s\n", stats.GitHub.LastCommitDate.Format("2006-01-02 15:04:05 MST"))
@@ -66,7 +91,7 @@ func main() {
 		fmt.Printf("%-24s: %d\n", check.Name, check.Score)
 	}
 
-	scores := ComputeScores(stats, thresholds)
+	scores := ComputeScores(stats, thresholds, weights)
 	fmt.Printf("\n--- Community ---\n")
 	fmt.Printf("Maturity:     %d\n", scores.Community.Maturity)
 	fmt.Printf("Activity:     %d\n", scores.Community.Activity)
@@ -78,4 +103,6 @@ func main() {
 	fmt.Printf("Cognitive complexity:  %d\n", scores.Tech.CognitiveComplexity)
 	fmt.Printf("Duplication:           %d\n", scores.Tech.Duplication)
 	fmt.Printf("Code smells:           %d\n", scores.Tech.CodeSmells)
+	fmt.Printf("\n--- Security ---\n")
+	fmt.Printf("Scorecard: %d\n", scores.Security.ScoreCard)
 }

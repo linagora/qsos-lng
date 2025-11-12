@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"time"
 )
 
@@ -24,9 +25,14 @@ type TechThreshold struct {
 	CodeSmells           [4]int64
 }
 
+type Weights struct {
+	ScoreCard map[string]int64
+}
+
 type ProjectScores struct {
 	Community *CommunityScores
 	Tech      *TechScores
+	Security  *SecurityScores
 }
 
 type CommunityScores struct {
@@ -44,7 +50,11 @@ type TechScores struct {
 	CodeSmells           int64
 }
 
-func ComputeScores(stats *ProjectStats, thresholds *Thresholds) *ProjectScores {
+type SecurityScores struct {
+	ScoreCard int64
+}
+
+func ComputeScores(stats *ProjectStats, thresholds *Thresholds, weights *Weights) *ProjectScores {
 	scores := &ProjectScores{
 		Community: &CommunityScores{
 			Maturity:     computeMaturityScore(stats, thresholds),
@@ -58,6 +68,9 @@ func ComputeScores(stats *ProjectStats, thresholds *Thresholds) *ProjectScores {
 			CognitiveComplexity:  computeCognitiveComplexityScore(stats, thresholds),
 			Duplication:          computeDuplicationScore(stats, thresholds),
 			CodeSmells:           computeCodeSmellsScore(stats, thresholds),
+		},
+		Security: &SecurityScores{
+			ScoreCard: computeScoreCardScore(stats, weights),
 		},
 	}
 	return scores
@@ -135,4 +148,26 @@ func computeScore(nb int64, thresholds [4]int64, direction Direction) int64 {
 	default:
 		return scale[0]
 	}
+}
+
+func computeScoreCardScore(stats *ProjectStats, weights *Weights) int64 {
+	var sum, divisor int64
+	for name, weight := range weights.ScoreCard {
+		found := false
+		for _, check := range stats.ScoreCard.Checks {
+			if check.Name != name {
+				continue
+			}
+			found = true
+			if check.Score == -1 { // -1 means that it doesn't apply
+				continue
+			}
+			sum += check.Score * weight
+			divisor += weight
+		}
+		if !found {
+			log.Fatalf("check %s not found in scorecard scores\n", name)
+		}
+	}
+	return (sum + 1) / divisor / 2
 }
