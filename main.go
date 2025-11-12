@@ -105,4 +105,6 @@ func main() {
 	fmt.Printf("Code smells:           %d\n", scores.Tech.CodeSmells)
 	fmt.Printf("\n--- Security ---\n")
 	fmt.Printf("Scorecard: %d\n", scores.Security.ScoreCard)
+
+	fmt.Printf("\n--- Summary ---\n%s\n", stats.Summary)
 }
