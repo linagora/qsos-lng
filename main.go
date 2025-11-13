@@ -52,24 +52,24 @@ func main() {
 		// https://scorecard.dev/#the-checks
 		// 1 for low upto 4 for critical
 		ScoreCard: map[string]int64{
-			"Vulnerabilities":        3,
+			"Vulnerabilities":        2, // Only known vulnerabilities, so it may give better scores for less known projects
 			"Dependency-Update-Tool": 3,
-			"Maintained":             3,
-			"Security-Policy":        2,
-			"License":                1,
-			"CII-Best-Practices":     1,
-			"CI-Tests":               1,
-			"Fuzzing":                2,
-			"SAST":                   2,
-			"Binary-Artifacts":       3,
-			"Branch-Protection":      3,
-			"Dangerous-Workflow":     4,
-			"Code-Review":            3,
-			"Contributors":           1,
-			"Pinned-Dependencies":    2,
-			"Token-Permissions":      3,
-			"Packaging":              2,
-			"Signed-Releases":        3,
+			// "Maintained" is disabled, as it's already in the community section
+			"Security-Policy": 2,
+			// "License" is disabled, as it's not for the security section
+			// "CII-Best-Practices" is disabled, as it's not relevant for us
+			// "CI-Tests" is disabled, as it's for more for the tech section
+			"Fuzzing":            1, // Only some tools are detected
+			"SAST":               1, // Only some tools are detected
+			"Binary-Artifacts":   3,
+			"Branch-Protection":  3,
+			"Dangerous-Workflow": 4,
+			"Code-Review":        3,
+			// "Contributors" is disabled, as it's already in the community section
+			"Pinned-Dependencies": 2,
+			"Token-Permissions":   3,
+			"Packaging":           2,
+			"Signed-Releases":     3,
 		},
 	}
 
