@@ -335,6 +335,13 @@ func (e *Executor) runSonarScannerCLI(owner, repo string) error {
 	}
 	defer os.RemoveAll(cacheDir)
 
+	// Create work directory for sonar-scanner
+	workDir, err := os.MkdirTemp("", component+"-work-")
+	if err != nil {
+		return fmt.Errorf("Cannot create work dir: %w", err)
+	}
+	defer os.RemoveAll(workDir)
+
 	// TODO make the command configurable
 	cmd = exec.Command(
 		"docker", "run", "--rm", "--net=host",
@@ -342,8 +349,10 @@ func (e *Executor) runSonarScannerCLI(owner, repo string) error {
 		"-e", fmt.Sprintf(`SONAR_HOST_URL=%s`, e.SonarqubeURL),
 		"-e", fmt.Sprintf(`SONAR_TOKEN=%s`, e.SonarqubeToken),
 		"-e", "SONAR_USER_HOME=/tmp/sonar",
+		"-e", "SONAR_SCANNER_OPTS=-Djava.io.tmpdir=/tmp/work",
 		"-v", fmt.Sprintf(`%s:/usr/src`, tmpDir),
 		"-v", fmt.Sprintf(`%s:/tmp/sonar`, cacheDir),
+		"-v", fmt.Sprintf(`%s:/tmp/work`, workDir),
 		"sonarsource/sonar-scanner-cli",
 		fmt.Sprintf(`-Dsonar.projectKey=%s`, component),
 		"-Dsonar.sources=.",
