@@ -27,6 +27,30 @@ The tool computes normalized scores across three main categories:
    - `AI_MODEL` (optional) for specifying a particular AI model
 3. Run `go run . minio/minio`
 
+## GitHub Actions Workflow
+
+A workflow is available at `.github/workflows/analyze.yml` that can be triggered manually to analyze any project.
+
+**Required Secrets:**
+
+Configure these in your repository settings (Settings → Secrets and variables → Actions):
+
+- `ANALYSIS_GITHUB_TOKEN` - A Personal Access Token with `public_repo` scope (or `repo` for private repos)
+  - Required for analyzing external repositories
+  - The default `GITHUB_TOKEN` has insufficient permissions for OpenSSF Scorecard checks on external repositories
+  - Create one at https://github.com/settings/tokens
+- `AI_API_KEY` - Your AI API key for generating summaries
+- `AI_BASE_URL` (optional) - Custom AI API URL
+- `AI_MODEL` (optional) - Specific AI model name
+
+**To run the workflow:**
+
+1. Go to the Actions tab in your GitHub repository
+2. Select "Analyze Project" workflow
+3. Click "Run workflow"
+4. Enter the project to analyze (e.g., `minio/minio`)
+5. View results in the workflow log
+
 ## Notes
 
 Running sonar-scanner-cli can be quite slow. It may be practical to skip this

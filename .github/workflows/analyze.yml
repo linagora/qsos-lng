@@ -12,6 +12,12 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      statuses: read
+
     services:
       sonarqube:
         image: sonarqube:lts-community
@@ -60,7 +66,7 @@ jobs:
 
       - name: Run analysis
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ANALYSIS_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           SONARQUBE_URL: http://localhost:9000
           SONARQUBE_TOKEN: ${{ env.SONAR_TOKEN }}
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
