@@ -385,7 +385,7 @@ func (e *Executor) getSonarMeasures(component string) (*SonarStats, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Cannot create request: %w", err)
 	}
-	req.Header.Add("Authorization", "Bearer "+e.SonarqubeToken)
+	req.SetBasicAuth(e.SonarqubeToken, "")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Error on request: %w", err)
@@ -459,7 +459,7 @@ func (e *Executor) getSonarBrainOverloadIssues(component string) (int64, error) 
 	if err != nil {
 		return 0, fmt.Errorf("Cannot create request: %w", err)
 	}
-	req.Header.Add("Authorization", "Bearer "+e.SonarqubeToken)
+	req.SetBasicAuth(e.SonarqubeToken, "")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("Error on request: %w", err)
