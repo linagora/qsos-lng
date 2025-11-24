@@ -328,19 +328,12 @@ func (e *Executor) runSonarScannerCLI(owner, repo string) error {
 		return fmt.Errorf("Cannot clone git repository: %w", err)
 	}
 
-	// Create cache directory for sonar-scanner
-	cacheDir, err := os.MkdirTemp("", component+"-cache-")
+	// Create temp directory for sonar-scanner (will be mounted as /tmp in container)
+	containerTmpDir, err := os.MkdirTemp("", component+"-tmp-")
 	if err != nil {
-		return fmt.Errorf("Cannot create cache dir: %w", err)
+		return fmt.Errorf("Cannot create temp dir: %w", err)
 	}
-	defer os.RemoveAll(cacheDir)
-
-	// Create work directory for sonar-scanner
-	workDir, err := os.MkdirTemp("", component+"-work-")
-	if err != nil {
-		return fmt.Errorf("Cannot create work dir: %w", err)
-	}
-	defer os.RemoveAll(workDir)
+	defer os.RemoveAll(containerTmpDir)
 
 	// TODO make the command configurable
 	cmd = exec.Command(
@@ -348,11 +341,8 @@ func (e *Executor) runSonarScannerCLI(owner, repo string) error {
 		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		"-e", fmt.Sprintf(`SONAR_HOST_URL=%s`, e.SonarqubeURL),
 		"-e", fmt.Sprintf(`SONAR_TOKEN=%s`, e.SonarqubeToken),
-		"-e", "SONAR_USER_HOME=/tmp/sonar",
-		"-e", "SONAR_SCANNER_OPTS=-Djava.io.tmpdir=/tmp/work",
 		"-v", fmt.Sprintf(`%s:/usr/src`, tmpDir),
-		"-v", fmt.Sprintf(`%s:/tmp/sonar`, cacheDir),
-		"-v", fmt.Sprintf(`%s:/tmp/work`, workDir),
+		"-v", fmt.Sprintf(`%s:/tmp`, containerTmpDir),
 		"sonarsource/sonar-scanner-cli",
 		fmt.Sprintf(`-Dsonar.projectKey=%s`, component),
 		"-Dsonar.sources=.",
