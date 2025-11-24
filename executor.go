@@ -331,6 +331,7 @@ func (e *Executor) runSonarScannerCLI(owner, repo string) error {
 	// TODO make the command configurable
 	cmd = exec.Command(
 		"docker", "run", "--rm", "--net=host",
+		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		"-e", fmt.Sprintf(`SONAR_HOST_URL=%s`, e.SonarqubeURL),
 		"-e", fmt.Sprintf(`SONAR_TOKEN=%s`, e.SonarqubeToken),
 		"-v", fmt.Sprintf(`%s:/usr/src`, tmpDir),
