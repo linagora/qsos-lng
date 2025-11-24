@@ -328,13 +328,22 @@ func (e *Executor) runSonarScannerCLI(owner, repo string) error {
 		return fmt.Errorf("Cannot clone git repository: %w", err)
 	}
 
+	// Create cache directory for sonar-scanner
+	cacheDir, err := os.MkdirTemp("", component+"-cache-")
+	if err != nil {
+		return fmt.Errorf("Cannot create cache dir: %w", err)
+	}
+	defer os.RemoveAll(cacheDir)
+
 	// TODO make the command configurable
 	cmd = exec.Command(
 		"docker", "run", "--rm", "--net=host",
 		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		"-e", fmt.Sprintf(`SONAR_HOST_URL=%s`, e.SonarqubeURL),
 		"-e", fmt.Sprintf(`SONAR_TOKEN=%s`, e.SonarqubeToken),
+		"-e", "SONAR_USER_HOME=/tmp/sonar",
 		"-v", fmt.Sprintf(`%s:/usr/src`, tmpDir),
+		"-v", fmt.Sprintf(`%s:/tmp/sonar`, cacheDir),
 		"sonarsource/sonar-scanner-cli",
 		fmt.Sprintf(`-Dsonar.projectKey=%s`, component),
 		"-Dsonar.sources=.",
