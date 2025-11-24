@@ -341,6 +341,7 @@ func (e *Executor) runSonarScannerCLI(owner, repo string) error {
 		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		"-e", fmt.Sprintf(`SONAR_HOST_URL=%s`, e.SonarqubeURL),
 		"-e", fmt.Sprintf(`SONAR_TOKEN=%s`, e.SonarqubeToken),
+		"-e", "SONAR_USER_HOME=/tmp",
 		"-v", fmt.Sprintf(`%s:/usr/src`, tmpDir),
 		"-v", fmt.Sprintf(`%s:/tmp`, containerTmpDir),
 		"sonarsource/sonar-scanner-cli",
