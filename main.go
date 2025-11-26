@@ -68,8 +68,8 @@ func main() {
 			// "Contributors" is disabled, as it's already in the community section
 			"Pinned-Dependencies": 2,
 			"Token-Permissions":   3,
-			"Packaging":           2,
-			"Signed-Releases":     3,
+			"Packaging":           4, // Increased, as it's really important for us
+			"Signed-Releases":     4, // Increased, as it's really important for us
 		},
 	}
 
