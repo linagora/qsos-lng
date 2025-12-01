@@ -2,27 +2,290 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/google/go-github/v76/github"
+	"github.com/jackc/pgx/v5"
+	"github.com/linagora/qsos-lng/block"
 	"github.com/linagora/qsos-lng/common"
 	"github.com/linagora/qsos-lng/community"
 	"github.com/linagora/qsos-lng/security"
 	"github.com/linagora/qsos-lng/tech"
-	"github.com/otiai10/openaigo"
 )
 
-func main() {
-	if len(os.Args) != 2 {
-		log.Fatalf("Usage: go run . <owner/repo>")
+var (
+	// Setup thresholds
+	day   = (24 * 60 * 60 * time.Second).Nanoseconds()
+	month = 30 * day
+	year  = 365 * day
+
+	communityThresholds = &community.CommunityThresholds{
+		Maturity:     [4]int64{1 * year, 5 * year, 10 * year, 20 * year},
+		Activity:     [4]int64{1 * month, 6 * month, 1 * year, 2 * year},
+		Popularity:   [4]int64{5_000, 20_000, 40_000, 80_000},
+		Contributors: [4]int64{1, 5, 20, 50},
 	}
 
-	parts := strings.Split(os.Args[1], "/")
+	techThresholds = &tech.TechThresholds{
+		Size:                 [4]int64{1_000, 10_000, 100_000, 1_000_000},
+		CyclomaticComplexity: [4]int64{1, 5, 10, 20},
+		CognitiveComplexity:  [4]int64{1, 3, 5, 10},
+		Duplication:          [4]int64{3, 5, 10, 20},
+		CodeSmells:           [4]int64{50, 200, 500, 1_000},
+	}
+
+	securityWeights = map[string]int64{
+		// https://scorecard.dev/#the-checks
+		// 1 for low upto 4 for critical
+		"Vulnerabilities":        2, // Only known vulnerabilities, so it may give better scores for less known projects
+		"Dependency-Update-Tool": 3,
+		// "Maintained" is disabled, as it's already in the community section
+		"Security-Policy": 2,
+		// "License" is disabled, as it's not for the security section
+		// "CII-Best-Practices" is disabled, as it's not relevant for us
+		// "CI-Tests" is disabled, as it's for more for the tech section
+		"Fuzzing":            1, // Only some tools are detected
+		"SAST":               1, // Only some tools are detected
+		"Binary-Artifacts":   3,
+		"Branch-Protection":  3,
+		"Dangerous-Workflow": 4,
+		"Code-Review":        3,
+		// "Contributors" is disabled, as it's already in the community section
+		"Pinned-Dependencies": 2,
+		"Token-Permissions":   3,
+		"Packaging":           4, // Increased, as it's really important for us
+		"Signed-Releases":     4, // Increased, as it's really important for us
+	}
+)
+
+func usage() {
+	log.Fatalf(`Usage:
+- go run analyze . <owner/repo> for one-shot analysis of a project
+- go run work for working in background for l'Argus du Libre.
+`)
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		usage()
+	}
+
+	switch os.Args[1] {
+	case "work":
+		work()
+	case "analyze":
+		if len(os.Args) != 3 {
+			usage()
+		}
+		analyze(os.Args[2])
+	default:
+		usage()
+	}
+}
+
+func work() {
+	ctx := context.Background()
+
+	// Setup credentials
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	if githubToken == "" {
+		log.Fatalf("GITHUB_TOKEN environment variable is not set")
+	}
+	githubClient := github.NewClient(nil).WithAuthToken(githubToken)
+
+	sonarqubeURL := os.Getenv("SONARQUBE_URL")
+	if sonarqubeURL == "" {
+		log.Fatalf("SONARQUBE_URL environment variable is not set")
+	}
+
+	sonarToken := os.Getenv("SONARQUBE_TOKEN")
+	if sonarToken == "" {
+		log.Fatalf("SONARQUBE_TOKEN environment variable is not set")
+	}
+
+	// Connect to the database
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		log.Fatalf("DATABASE_URL environment variable is not set")
+	}
+	conn, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer conn.Close(ctx)
+
+	// Load fields from database once
+	rows, err := conn.Query(ctx, "SELECT id, slug FROM categories_field")
+	if err != nil {
+		log.Fatalf("Failed to load fields: %v", err)
+	}
+	fieldMap := make(map[string]int)
+	for rows.Next() {
+		var fieldID int
+		var slug string
+		if err := rows.Scan(&fieldID, &slug); err != nil {
+			log.Fatalf("Failed to scan field: %v", err)
+		}
+		fieldMap[slug] = fieldID
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		log.Fatalf("Error iterating fields: %v", err)
+	}
+
+	for {
+		// Query for a draft project
+		var projectID int
+		var repositoryURL string
+		err = conn.QueryRow(ctx, `
+			SELECT id, repository_url
+			FROM categories_software
+			WHERE state = 'draft'
+			ORDER BY created_at ASC
+			LIMIT 1
+		`).Scan(&projectID, &repositoryURL)
+
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				time.Sleep(3 * time.Second)
+				continue
+			}
+			log.Fatalf("Failed to query database: %v", err)
+		}
+
+		fmt.Printf("Processing project ID %d: %s\n", projectID, repositoryURL)
+
+		scores, err := process(repositoryURL, githubClient, githubToken, sonarqubeURL, sonarToken)
+		if err != nil {
+			log.Printf("Failed to process '%s': %v", repositoryURL, err)
+			continue
+		}
+
+		// Map scores to field slugs and database score format (1.00-5.00)
+		// Scores are 0-4, so we add 1 to get 1-5
+		scoreResults := map[string]float64{
+			"maturity":              float64(scores.Community.Maturity + 1),
+			"activity":              float64(scores.Community.Activity + 1),
+			"popularity":            float64(scores.Community.Popularity + 1),
+			"contributors":          float64(scores.Community.Contributors + 1),
+			"size":                  float64(scores.Tech.Size + 1),
+			"cyclomatic-complexity": float64(scores.Tech.CyclomaticComplexity + 1),
+			"cognitive-complexity":  float64(scores.Tech.CognitiveComplexity + 1),
+			"duplication":           float64(scores.Tech.Duplication + 1),
+			"code-smells":           float64(scores.Tech.CodeSmells + 1),
+			"scorecard":             float64(scores.Security.ScoreCard + 1),
+		}
+
+		// Begin transaction
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			log.Printf("Failed to begin transaction: %v", err)
+			continue
+		}
+
+		// Insert analysis results
+		saveSuccess := true
+		for slug, score := range scoreResults {
+			fieldID, exists := fieldMap[slug]
+			if !exists {
+				log.Printf("Warning: Field with slug '%s' not found in database, skipping", slug)
+				continue
+			}
+
+			_, err := tx.Exec(ctx, `
+				INSERT INTO categories_analysisresult (software_id, field_id, score, is_published, is_manual, created_at)
+				VALUES ($1, $2, $3, false, false, NOW())
+			`, projectID, fieldID, score)
+
+			if err != nil {
+				log.Printf("Failed to insert analysis result for field '%s': %v", slug, err)
+				saveSuccess = false
+				break
+			}
+		}
+
+		if !saveSuccess {
+			tx.Rollback(ctx)
+			log.Printf("Transaction rolled back due to errors\n")
+			continue
+		}
+
+		// Update software state to 'review'
+		_, err = tx.Exec(ctx, `
+			UPDATE categories_software
+			SET state = 'review'
+			WHERE id = $1
+		`, projectID)
+
+		if err != nil {
+			log.Printf("Failed to update software state: %v", err)
+			tx.Rollback(ctx)
+			continue
+		}
+
+		// Commit transaction
+		err = tx.Commit(ctx)
+		if err != nil {
+			log.Printf("Failed to commit transaction: %v", err)
+			continue
+		}
+
+		fmt.Printf("Project ID %d analysis completed and saved to database\n\n", projectID)
+	}
+}
+
+func process(repositoryURL string, githubClient *github.Client, githubToken, sonarqubeURL, sonarToken string) (*common.ProjectScores, error) {
+	ctx := context.Background()
+
+	parsedURL, err := url.Parse(repositoryURL)
+	if err != nil {
+		return nil, fmt.Errorf("cannot parse repositoryURL: %v", err)
+		log.Fatalf("Failed to parse repository URL '%s': %v", repositoryURL, err)
+	}
+	if parsedURL.Host != "github.com" {
+		return nil, fmt.Errorf("only github.com projects are supported")
+	}
+
+	path := strings.Trim(parsedURL.Path, "/")
+	path = strings.TrimSuffix(path, ".git")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid GitHub repository path")
+	}
+	owner, repo := parts[0], parts[1]
+
+	fmt.Printf("Processing project %s/%s\n", owner, repo)
+
+	communityData, err := community.Fetch(ctx, githubClient, owner, repo)
+	if err != nil {
+		log.Fatalf("Failed to fetch community data: %v", err)
+	}
+	techData, err := tech.Fetch(owner, repo, sonarqubeURL, sonarToken)
+	if err != nil {
+		log.Fatalf("Failed to fetch tech data: %v", err)
+	}
+	securityData, err := security.Fetch(owner, repo, githubToken)
+	if err != nil {
+		log.Fatalf("Failed to fetch security data: %v", err)
+	}
+
+	communityScores := community.ComputeAll(communityData, communityThresholds)
+	techScores := tech.ComputeAll(techData, techThresholds)
+	securityScores := security.ComputeAll(securityData, securityWeights)
+	return &common.ProjectScores{
+		Community: communityScores,
+		Tech:      techScores,
+		Security:  securityScores,
+	}, nil
+}
+
+func analyze(project string) {
+	parts := strings.Split(project, "/")
 	if len(parts) != 2 {
 		log.Fatalf("Invalid project format. Must be in the format: owner/repo")
 	}
@@ -63,52 +326,9 @@ func main() {
 		log.Fatalf("Failed to fetch security data: %v", err)
 	}
 
-	summary, err := getSummary(ctx, githubClient, owner, repo)
+	summary, err := block.GetSummary(ctx, githubClient, owner, repo)
 	if err != nil {
 		log.Fatalf("Failed to get summary: %v", err)
-	}
-
-	// Setup thresholds
-	day := (24 * 60 * 60 * time.Second).Nanoseconds()
-	month := 30 * day
-	year := 365 * day
-
-	communityThresholds := &community.CommunityThresholds{
-		Maturity:     [4]int64{1 * year, 5 * year, 10 * year, 20 * year},
-		Activity:     [4]int64{1 * month, 6 * month, 1 * year, 2 * year},
-		Popularity:   [4]int64{5_000, 20_000, 40_000, 80_000},
-		Contributors: [4]int64{1, 5, 20, 50},
-	}
-
-	techThresholds := &tech.TechThresholds{
-		Size:                 [4]int64{1_000, 10_000, 100_000, 1_000_000},
-		CyclomaticComplexity: [4]int64{1, 5, 10, 20},
-		CognitiveComplexity:  [4]int64{1, 3, 5, 10},
-		Duplication:          [4]int64{3, 5, 10, 20},
-		CodeSmells:           [4]int64{50, 200, 500, 1_000},
-	}
-
-	securityWeights := map[string]int64{
-		// https://scorecard.dev/#the-checks
-		// 1 for low upto 4 for critical
-		"Vulnerabilities":        2, // Only known vulnerabilities, so it may give better scores for less known projects
-		"Dependency-Update-Tool": 3,
-		// "Maintained" is disabled, as it's already in the community section
-		"Security-Policy": 2,
-		// "License" is disabled, as it's not for the security section
-		// "CII-Best-Practices" is disabled, as it's not relevant for us
-		// "CI-Tests" is disabled, as it's for more for the tech section
-		"Fuzzing":            1, // Only some tools are detected
-		"SAST":               1, // Only some tools are detected
-		"Binary-Artifacts":   3,
-		"Branch-Protection":  3,
-		"Dangerous-Workflow": 4,
-		"Code-Review":        3,
-		// "Contributors" is disabled, as it's already in the community section
-		"Pinned-Dependencies": 2,
-		"Token-Permissions":   3,
-		"Packaging":           4, // Increased, as it's really important for us
-		"Signed-Releases":     4, // Increased, as it's really important for us
 	}
 
 	// Compute scores
@@ -156,59 +376,4 @@ func main() {
 	fmt.Printf("Scorecard: %d\n", scores.Security.ScoreCard)
 
 	fmt.Printf("\n--- Summary ---\n%s\n", summary)
-}
-
-// getSummary fetches and summarizes the project README using AI
-func getSummary(ctx context.Context, client *github.Client, owner, repo string) (string, error) {
-	readme, _, err := client.Repositories.GetReadme(ctx, owner, repo, nil)
-	if err != nil {
-		return "", err
-	}
-	content, err := readme.GetContent()
-	if err != nil {
-		return "", err
-	}
-
-	aiClient := openaigo.NewClient(os.Getenv("AI_API_KEY"))
-	if u := os.Getenv("AI_BASE_URL"); u != "" {
-		aiClient.BaseURL = u
-	}
-
-	summary, err := summarize(ctx, aiClient, content)
-	if err != nil {
-		return "", fmt.Errorf("summarize: %w", err)
-	}
-	return summary, nil
-}
-
-const promptTLDR = `
-Tu es un agent dont le rôle est de créer une introduction en français pour un
-logiciel Open-Source. Cette introduction devra faire 4 ou 5 phrases. Voici le
-README du logiciel en question.
-`
-
-func summarize(ctx context.Context, client *openaigo.Client, content string) (string, error) {
-	if client.APIKey == "" {
-		return "", errors.New("AI_API_KEY not set")
-	}
-
-	model := "gpt-oss-120b"
-	if m := os.Getenv("AI_MODEL"); m != "" {
-		model = m
-	}
-	request := openaigo.ChatRequest{
-		Model: model,
-		Messages: []openaigo.Message{
-			{Role: "system", Content: promptTLDR},
-			{Role: "user", Content: content},
-		},
-	}
-	response, err := client.Chat(ctx, request)
-	if err != nil {
-		return "", fmt.Errorf("AI error: %w", err)
-	}
-	if len(response.Choices) == 0 {
-		return "", fmt.Errorf("AI error: no response")
-	}
-	return response.Choices[0].Message.Content, nil
 }
