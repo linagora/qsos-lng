@@ -169,19 +169,17 @@ func work() {
 		// Map scores to field slugs and database score format (1.00-5.00)
 		// Scores are 0-4, so we add 1 to get 1-5
 		scoreResults := map[string]float64{
-			"maturity":              float64(scores.Community.Maturity + 1),
-			"activity":              float64(scores.Community.Activity + 1),
-			"popularity":            float64(scores.Community.Popularity + 1),
-			"contributors":          float64(scores.Community.Contributors + 1),
-			"size":                  float64(scores.Tech.Size + 1),
-			"cyclomatic-complexity": float64(scores.Tech.CyclomaticComplexity + 1),
-			"cognitive-complexity":  float64(scores.Tech.CognitiveComplexity + 1),
-			"duplication":           float64(scores.Tech.Duplication + 1),
-			"code-smells":           float64(scores.Tech.CodeSmells + 1),
-			"scorecard":             float64(scores.Security.ScoreCard + 1),
+			"maturity":     float64(scores.Community.Maturity),
+			"activity":     float64(scores.Community.Activity),
+			"popularity":   float64(scores.Community.Popularity),
+			"contributors": float64(scores.Community.Contributors),
+			"size":         float64(scores.Tech.Size),
+			"complexity":   float64(scores.Tech.CognitiveComplexity),
+			"duplication":  float64(scores.Tech.Duplication),
+			"code-smells":  float64(scores.Tech.CodeSmells),
+			"scorecard":    float64(scores.Security.ScoreCard),
 		}
 
-		// Begin transaction
 		tx, err := conn.Begin(ctx)
 		if err != nil {
 			log.Printf("Failed to begin transaction: %v", err)
@@ -228,7 +226,6 @@ func work() {
 			continue
 		}
 
-		// Commit transaction
 		err = tx.Commit(ctx)
 		if err != nil {
 			log.Printf("Failed to commit transaction: %v", err)
@@ -297,12 +294,10 @@ func analyze(project string) {
 		log.Fatalf("GITHUB_TOKEN environment variable is not set")
 	}
 	githubClient := github.NewClient(nil).WithAuthToken(githubToken)
-
 	sonarqubeURL := os.Getenv("SONARQUBE_URL")
 	if sonarqubeURL == "" {
 		log.Fatalf("SONARQUBE_URL environment variable is not set")
 	}
-
 	sonarToken := os.Getenv("SONARQUBE_TOKEN")
 	if sonarToken == "" {
 		log.Fatalf("SONARQUBE_TOKEN environment variable is not set")
@@ -310,22 +305,18 @@ func analyze(project string) {
 
 	// Fetch data from each category
 	ctx := context.Background()
-
 	communityData, err := community.Fetch(ctx, githubClient, owner, repo)
 	if err != nil {
 		log.Fatalf("Failed to fetch community data: %v", err)
 	}
-
 	techData, err := tech.Fetch(owner, repo, sonarqubeURL, sonarToken)
 	if err != nil {
 		log.Fatalf("Failed to fetch tech data: %v", err)
 	}
-
 	securityData, err := security.Fetch(owner, repo, githubToken)
 	if err != nil {
 		log.Fatalf("Failed to fetch security data: %v", err)
 	}
-
 	summary, err := block.GetSummary(ctx, githubClient, owner, repo)
 	if err != nil {
 		log.Fatalf("Failed to get summary: %v", err)

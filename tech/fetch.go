@@ -32,18 +32,8 @@ func Fetch(owner, repo, sonarqubeURL, sonarToken string) (*TechData, error) {
 		return nil, fmt.Errorf("Cannot parse SONARQUBE_URL: %w", err)
 	}
 
-	skipped := false
-	if skip := os.Getenv("SKIP_SONAR_SCANNER"); skip != "" {
-		s, err := strconv.ParseBool(skip)
-		if err != nil {
-			log.Fatalf("Invalid value for SKIP_SONAR_SCANNER")
-		}
-		skipped = s
-	}
-	if !skipped {
-		if err := runSonarScannerCLI(owner, repo, u, sonarToken); err != nil {
-			return nil, err
-		}
+	if err := runSonarScannerCLI(owner, repo, u, sonarToken); err != nil {
+		return nil, err
 	}
 
 	// XXX Sonarqube takes some time to build the measures after the scanner
