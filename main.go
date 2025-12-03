@@ -180,6 +180,28 @@ func work() {
 		owner := parts[0]
 		repo := strings.TrimSuffix(parts[1], ".git")
 
+		// Get repository info for language
+		repository, _, err := githubClient.Repositories.Get(ctx, owner, repo)
+		if err != nil {
+			log.Printf("Warning: Failed to fetch repository info: %v", err)
+		}
+		language := ""
+		if repository != nil && repository.Language != nil {
+			language = *repository.Language
+		}
+
+		// Get icon URL
+		iconURL := ""
+		iconURLResult, err := metadata.GetIconURL(ctx, githubClient, owner, repo, language)
+		if err != nil {
+			log.Printf("Warning: Failed to get icon URL: %v", err)
+		} else {
+			iconURL = iconURLResult
+		}
+		if iconURL != "" {
+			fmt.Printf("Found icon URL: %s\n", iconURL)
+		}
+
 		// Generate bilingual summaries
 		fmt.Printf("Generating project summaries...\n")
 		summaries, err := metadata.GetBilingualSummary(ctx, githubClient, owner, repo)
@@ -246,12 +268,12 @@ func work() {
 			}
 		}
 
-		// Update software state to 'review'
+		// Update software state to 'in_review' and save icon URL
 		_, err = tx.Exec(ctx, `
 			UPDATE categories_software
-			SET state = 'in_review'
+			SET state = 'in_review', logo_url = $2
 			WHERE id = $1
-		`, projectID)
+		`, projectID, iconURL)
 
 		if err != nil {
 			log.Printf("Failed to update software state: %v", err)
@@ -338,6 +360,23 @@ func analyze(project string) {
 
 	// Fetch data from each category
 	ctx := context.Background()
+
+	// Get repository info for language
+	repository, _, err := githubClient.Repositories.Get(ctx, owner, repo)
+	if err != nil {
+		log.Fatalf("Failed to fetch repository info: %v", err)
+	}
+	language := ""
+	if repository.Language != nil {
+		language = *repository.Language
+	}
+
+	// Get icon URL
+	iconURL, err := metadata.GetIconURL(ctx, githubClient, owner, repo, language)
+	if err != nil {
+		log.Printf("Warning: Failed to get icon URL: %v", err)
+	}
+
 	communityData, err := community.Fetch(ctx, githubClient, owner, repo)
 	if err != nil {
 		log.Fatalf("Failed to fetch community data: %v", err)
@@ -400,4 +439,7 @@ func analyze(project string) {
 	fmt.Printf("Scorecard: %d\n", scores.Security.ScoreCard)
 
 	fmt.Printf("\n--- Summary ---\n%s\n", summary)
+	if iconURL != "" {
+		fmt.Printf("Icon URL: %s\n", iconURL)
+	}
 }
