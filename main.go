@@ -11,9 +11,9 @@ import (
 
 	"github.com/google/go-github/v76/github"
 	"github.com/jackc/pgx/v5"
-	"github.com/linagora/qsos-lng/block"
 	"github.com/linagora/qsos-lng/common"
 	"github.com/linagora/qsos-lng/community"
+	"github.com/linagora/qsos-lng/metadata"
 	"github.com/linagora/qsos-lng/security"
 	"github.com/linagora/qsos-lng/tech"
 )
@@ -166,6 +166,28 @@ func work() {
 			continue
 		}
 
+		// Parse repository URL to extract owner and repo
+		parsedURL, err := url.Parse(repositoryURL)
+		if err != nil {
+			log.Printf("Failed to parse repository URL '%s': %v", repositoryURL, err)
+			continue
+		}
+		parts := strings.Split(strings.TrimPrefix(parsedURL.Path, "/"), "/")
+		if len(parts) < 2 {
+			log.Printf("Invalid repository URL format '%s'", repositoryURL)
+			continue
+		}
+		owner := parts[0]
+		repo := strings.TrimSuffix(parts[1], ".git")
+
+		// Generate bilingual summaries
+		fmt.Printf("Generating project summaries...\n")
+		summaries, err := metadata.GetBilingualSummary(ctx, githubClient, owner, repo)
+		if err != nil {
+			log.Printf("Warning: Failed to generate summaries: %v", err)
+			// Continue without summaries rather than failing the entire analysis
+		}
+
 		// Map scores to field slugs and database score format (1.00-5.00)
 		// Scores are 0-4, so we add 1 to get 1-5
 		scoreResults := map[string]float64{
@@ -213,10 +235,21 @@ func work() {
 			continue
 		}
 
+		// Save summaries to database if they were generated
+		if summaries != nil {
+			err = metadata.SaveSummariesToDB(ctx, tx, int64(projectID), summaries)
+			if err != nil {
+				log.Printf("Warning: Failed to save summaries to database: %v", err)
+				// Continue without failing the transaction for summaries
+			} else {
+				fmt.Printf("Summaries saved to database\n")
+			}
+		}
+
 		// Update software state to 'review'
 		_, err = tx.Exec(ctx, `
 			UPDATE categories_software
-			SET state = 'review'
+			SET state = 'in_review'
 			WHERE id = $1
 		`, projectID)
 
@@ -317,7 +350,7 @@ func analyze(project string) {
 	if err != nil {
 		log.Fatalf("Failed to fetch security data: %v", err)
 	}
-	summary, err := block.GetSummary(ctx, githubClient, owner, repo)
+	summary, err := metadata.GetSummary(ctx, githubClient, owner, repo)
 	if err != nil {
 		log.Fatalf("Failed to get summary: %v", err)
 	}

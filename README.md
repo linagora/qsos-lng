@@ -26,7 +26,7 @@ The tool computes normalized scores across three main categories:
    - `AI_API_KEY` for the AI API key (used for generating summaries)
    - `AI_BASE_URL` (optional) for a custom AI API base URL
    - `AI_MODEL` (optional) for specifying a particular AI model
-3. Run `go run . minio/minio`
+3. Run `go run . analyze minio/minio`
 
 ## GitHub Actions Workflow
 

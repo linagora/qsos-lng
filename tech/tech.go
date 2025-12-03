@@ -43,6 +43,9 @@ func ComputeDuplication(data *TechData, threshold [4]int64) int64 {
 // ComputeCodeSmells calculates the code smells score
 // based on the average number of lines between code smells
 func ComputeCodeSmells(data *TechData, threshold [4]int64) int64 {
+	if data.CodeSmells == 0 {
+		return 5
+	}
 	// What is the average number of lines between 2 code smells?
 	avg := int64(data.LinesOfCode / data.CodeSmells)
 	return common.ComputeScore(avg, threshold, common.BiggerIsBetter)

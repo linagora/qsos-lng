@@ -74,4 +74,4 @@ jobs:
           AI_MODEL: ${{ secrets.AI_MODEL }}
         run: |
           echo "Analyzing project: ${{ inputs.project }}"
-          go run . ${{ inputs.project }}
+          go run . analyze ${{ inputs.project }}
