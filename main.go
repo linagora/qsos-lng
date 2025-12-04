@@ -180,14 +180,21 @@ func work() {
 		owner := parts[0]
 		repo := strings.TrimSuffix(parts[1], ".git")
 
-		// Get repository info for language
+		// Get repository info for language and homepage
 		repository, _, err := githubClient.Repositories.Get(ctx, owner, repo)
 		if err != nil {
 			log.Printf("Warning: Failed to fetch repository info: %v", err)
 		}
 		language := ""
-		if repository != nil && repository.Language != nil {
-			language = *repository.Language
+		websiteURL := ""
+		if repository != nil {
+			if repository.Language != nil {
+				language = *repository.Language
+			}
+			if repository.Homepage != nil && *repository.Homepage != "" {
+				websiteURL = *repository.Homepage
+				fmt.Printf("Found website URL: %s\n", websiteURL)
+			}
 		}
 
 		// Get icon URL
@@ -251,7 +258,7 @@ func work() {
 
 			_, err := tx.Exec(ctx, `
 				INSERT INTO categories_analysisresult (software_id, field_id, score, is_published, is_manual, created_at)
-				VALUES ($1, $2, $3, false, false, NOW())
+				VALUES ($1, $2, $3, true, true, NOW())
 			`, projectID, fieldID, score)
 
 			if err != nil {
@@ -279,7 +286,7 @@ func work() {
 		}
 
 		// Save tags to database if they were generated
-		if tags != nil && len(tags) > 0 {
+		if len(tags) > 0 {
 			err = metadata.SaveTagsToDB(ctx, tx, int64(projectID), tags)
 			if err != nil {
 				log.Printf("Warning: Failed to save tags to database: %v", err)
@@ -289,12 +296,12 @@ func work() {
 			}
 		}
 
-		// Update software state to 'in_review' and save icon URL
+		// Update software state to 'in_review', save icon URL and website URL
 		_, err = tx.Exec(ctx, `
 			UPDATE categories_software
-			SET state = 'in_review', logo_url = $2
+			SET state = 'in_review', logo_url = $2, website_url = $3
 			WHERE id = $1
-		`, projectID, iconURL)
+		`, projectID, iconURL, websiteURL)
 
 		if err != nil {
 			log.Printf("Failed to update software state: %v", err)

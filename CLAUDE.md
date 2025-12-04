@@ -46,7 +46,7 @@ The codebase is organized by analysis category, with each package following a co
 - **`community/`** - GitHub repository metadata and contributor activity
 - **`tech/`** - Code quality metrics from SonarQube
 - **`security/`** - Security best practices from OpenSSF Scorecard
-- **`metadata/`** - AI-generated project summaries (bilingual: French and English), and Icon URL resolution (simple-icons → devicons fallback)
+- **`metadata/`** - AI-generated project summaries (bilingual: French and English), AI-generated tags (reusing existing tags), and Icon URL resolution (simple-icons → devicons fallback)
 - **`common/`** - Shared scoring logic and type definitions
 
 ### Data Flow: Fetch → Compute Pattern
@@ -91,14 +91,17 @@ Work mode continuously polls the database for draft projects:
 
 1. Query `categories_software` for `state = 'draft'` projects
 2. Run full analysis (fetch + compute for all categories)
-3. Generate bilingual AI summaries (French and English)
+3. Extract website URL from GitHub repository homepage field
 4. Fetch icon URL (simple-icons → devicons fallback)
-5. Save results to database in transaction:
+5. Generate bilingual AI summaries (French and English)
+6. Generate 3-5 AI tags (prioritizing reuse of existing tags)
+7. Save results to database in transaction:
    - Insert scores into `categories_analysisresult` table (mapped by field slugs)
    - Save summaries to `categories_block` table (with upsert on conflict)
-   - Update `logo_url` field in `categories_software`
+   - Save tags to `categories_tag` and associate via `categories_software_tags` (with conflict handling)
+   - Update `logo_url` and `website_url` fields in `categories_software`
    - Update project state to `'in_review'`
-6. Sleep 3 seconds if no drafts found
+8. Sleep 3 seconds if no drafts found
 
 ### Icon Resolution Strategy
 
@@ -121,14 +124,37 @@ The `metadata/` package generates bilingual summaries:
 - Default model: `gpt-oss-120b` (configurable via `AI_MODEL`)
 - Summaries saved to `categories_block` table with upsert logic (on conflict: update content and timestamp)
 
+### AI Tag Generation
+
+The `metadata/` package generates relevant tags for projects:
+
+- Fetches README content from GitHub (same as summary generation)
+- Queries database for all existing tags to promote reuse
+- Sends README and existing tags to AI API with instructions to generate 3-5 tags
+- AI prioritizes reusing existing tags when relevant, only creating new ones when necessary
+- Tags are validated (2-8 tags, max 50 characters each) and normalized to lowercase
+- Tag names are automatically converted to URL-friendly slugs
+- Saves tags to `categories_tag` table using `ON CONFLICT` to handle duplicates
+- Creates associations in `categories_software_tags` with duplicate prevention
+
+### Website URL Extraction
+
+Work mode extracts the homepage URL from GitHub repository metadata:
+
+- Uses GitHub API's repository `Homepage` field
+- Saves to `website_url` field in `categories_software` table
+- Only populated if the homepage field exists and is non-empty
+
 ## Database Schema
 
 Key tables referenced in the code:
 
-- **`categories_software`**: Projects with `state` (draft/in_review/published), `repository_url`, `logo_url`
+- **`categories_software`**: Projects with `state` (draft/in_review/published), `repository_url`, `logo_url`, `website_url`
 - **`categories_field`**: Field definitions with `slug` (used to map scores to database)
 - **`categories_analysisresult`**: Score records with `software_id`, `field_id`, `score`, `is_published`, `is_manual`
 - **`categories_block`**: Content blocks with `software_id`, `kind` (e.g., 'overview'), `locale` (fr/en), `content`
+- **`categories_tag`**: Tag definitions with `name` and `slug` (both unique)
+- **`categories_software_tags`**: Many-to-many relationship between software and tags with `software_id`, `tag_id` (unique constraint on pair)
 
 ## Key Implementation Details
 

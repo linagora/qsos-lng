@@ -46,7 +46,7 @@ Configure these in your repository settings (Settings → Secrets and variables 
 
 **To run the workflow:**
 
-1. Go to the Actions tab in your GitHub repository
+1. Go to the Actions tab in your GitHub repository: https://github.com/linagora/qsos-lng/actions/workflows/analyze.yml
 2. Select "Analyze Project" workflow
 3. Click "Run workflow"
 4. Enter the project to analyze (e.g., `minio/minio`)

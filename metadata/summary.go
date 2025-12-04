@@ -78,13 +78,15 @@ func GetBilingualSummary(ctx context.Context, client *github.Client, owner, repo
 const promptTLDRFrench = `
 Tu es un agent dont le rôle est de créer une introduction en français pour un
 logiciel Open-Source. Cette introduction devra faire un paragraphe de 3 ou 4
-phrases. Tu peux utiliser du markdown. Voici le README du logiciel en question.
+phrases (sans titre). Tu peux utiliser du markdown. Voici le README du logiciel
+en question.
 `
 
 const promptTLDREnglish = `
 You are an agent whose role is to create an introduction in English for an
 Open-Source software. This introduction should be a paragraph of 3 or 4
-sentences. Markdown is allowed. Here is the README of the software in question.
+sentences (no title). Markdown is allowed. Here is the README of the software
+in question.
 `
 
 func summarize(ctx context.Context, client *openaigo.Client, content string, locale string) (string, error) {
