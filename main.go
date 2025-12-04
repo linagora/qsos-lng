@@ -210,6 +210,16 @@ func work() {
 			// Continue without summaries rather than failing the entire analysis
 		}
 
+		// Generate tags
+		fmt.Printf("Generating project tags...\n")
+		tags, err := metadata.GetTags(ctx, githubClient, conn, owner, repo)
+		if err != nil {
+			log.Printf("Warning: Failed to generate tags: %v", err)
+			// Continue without tags rather than failing the entire analysis
+		} else {
+			fmt.Printf("Generated tags: %v\n", tags)
+		}
+
 		// Map scores to field slugs and database score format (1.00-5.00)
 		// Scores are 0-4, so we add 1 to get 1-5
 		scoreResults := map[string]float64{
@@ -265,6 +275,17 @@ func work() {
 				// Continue without failing the transaction for summaries
 			} else {
 				fmt.Printf("Summaries saved to database\n")
+			}
+		}
+
+		// Save tags to database if they were generated
+		if tags != nil && len(tags) > 0 {
+			err = metadata.SaveTagsToDB(ctx, tx, int64(projectID), tags)
+			if err != nil {
+				log.Printf("Warning: Failed to save tags to database: %v", err)
+				// Continue without failing the transaction for tags
+			} else {
+				fmt.Printf("Tags saved to database\n")
 			}
 		}
 
