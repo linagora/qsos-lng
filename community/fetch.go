@@ -93,5 +93,12 @@ func Fetch(ctx context.Context, client *github.Client, owner, repo string) (*Com
 		}
 	}
 
+	// 5. Fetch documentation data
+	docData, err := FetchDocumentation(ctx, client, owner, repo)
+	if err != nil {
+		return nil, fmt.Errorf("FetchDocumentation failed: %w", err)
+	}
+	data.Documentation = docData
+
 	return data, nil
 }

@@ -25,10 +25,11 @@ var (
 	year  = 365 * day
 
 	communityThresholds = &community.CommunityThresholds{
-		Maturity:     [4]int64{1 * year, 5 * year, 10 * year, 20 * year},
-		Activity:     [4]int64{1 * month, 6 * month, 1 * year, 2 * year},
-		Popularity:   [4]int64{5_000, 20_000, 40_000, 80_000},
-		Contributors: [4]int64{1, 5, 20, 50},
+		Maturity:      [4]int64{1 * year, 5 * year, 10 * year, 20 * year},
+		Activity:      [4]int64{1 * month, 6 * month, 1 * year, 2 * year},
+		Popularity:    [4]int64{5_000, 20_000, 40_000, 80_000},
+		Contributors:  [4]int64{1, 5, 20, 50},
+		Documentation: [4]int64{20, 40, 60, 80}, // Percentage score: 20%=poor, 40%=partial, 60%=good, 80%=excellent
 	}
 
 	techThresholds = &tech.TechThresholds{
@@ -230,15 +231,16 @@ func work() {
 		// Map scores to field slugs and database score format (1.00-5.00)
 		// Scores are 0-4, so we add 1 to get 1-5
 		scoreResults := map[string]float64{
-			"maturity":     float64(scores.Community.Maturity),
-			"activity":     float64(scores.Community.Activity),
-			"popularity":   float64(scores.Community.Popularity),
-			"contributors": float64(scores.Community.Contributors),
-			"size":         float64(scores.Tech.Size),
-			"complexity":   float64(scores.Tech.CognitiveComplexity),
-			"duplication":  float64(scores.Tech.Duplication),
-			"code-smells":  float64(scores.Tech.CodeSmells),
-			"scorecard":    float64(scores.Security.ScoreCard),
+			"maturity":      float64(scores.Community.Maturity),
+			"activity":      float64(scores.Community.Activity),
+			"popularity":    float64(scores.Community.Popularity),
+			"contributors":  float64(scores.Community.Contributors),
+			"documentation": float64(scores.Community.Documentation),
+			"size":          float64(scores.Tech.Size),
+			"complexity":    float64(scores.Tech.CognitiveComplexity),
+			"duplication":   float64(scores.Tech.Duplication),
+			"code-smells":   float64(scores.Tech.CodeSmells),
+			"scorecard":     float64(scores.Security.ScoreCard),
 		}
 
 		tx, err := conn.Begin(ctx)
@@ -453,10 +455,11 @@ func analyze(project string) {
 	}
 
 	fmt.Printf("\n--- Community ---\n")
-	fmt.Printf("Maturity:     %d\n", scores.Community.Maturity)
-	fmt.Printf("Activity:     %d\n", scores.Community.Activity)
-	fmt.Printf("Popularity:   %d\n", scores.Community.Popularity)
-	fmt.Printf("Contributors: %d\n", scores.Community.Contributors)
+	fmt.Printf("Maturity:      %d\n", scores.Community.Maturity)
+	fmt.Printf("Activity:      %d\n", scores.Community.Activity)
+	fmt.Printf("Popularity:    %d\n", scores.Community.Popularity)
+	fmt.Printf("Contributors:  %d\n", scores.Community.Contributors)
+	fmt.Printf("Documentation: %d\n", scores.Community.Documentation)
 	fmt.Printf("\n--- Tech ---\n")
 	fmt.Printf("Code size:             %d\n", scores.Tech.Size)
 	fmt.Printf("Cyclomatic complexity: %d\n", scores.Tech.CyclomaticComplexity)

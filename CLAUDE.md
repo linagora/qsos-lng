@@ -43,7 +43,7 @@ Optional:
 
 The codebase is organized by analysis category, with each package following a consistent **Fetch → Compute** pattern:
 
-- **`community/`** - GitHub repository metadata and contributor activity
+- **`community/`** - GitHub repository metadata, contributor activity, and documentation quality
 - **`tech/`** - Code quality metrics from SonarQube
 - **`security/`** - Security best practices from OpenSSF Scorecard
 - **`metadata/`** - AI-generated project summaries (bilingual: French and English), AI-generated tags (reusing existing tags), and Icon URL resolution (simple-icons → devicons fallback)
@@ -84,6 +84,30 @@ Security scoring differs from other categories:
 - Checks with score -1 are skipped (not applicable)
 - Formula: `score = (sum of weighted_checks) / (sum of weights) / 2`
 - Heavily weights packaging (4) and signed releases (4) for supply chain security
+
+### Documentation Quality Scoring
+
+The `community/documentation.go` module evaluates documentation quality using multiple metrics:
+
+**Metrics collected from GitHub:**
+- **README analysis**: Word count, key sections (Installation, Usage, API, Contributing, etc.)
+- **Documentation directory**: Presence of `/docs` or `/doc` folder and file count
+- **Multi-language support**: Additional language READMEs (README.fr.md, README.es.md, etc.)
+- **Contribution accessibility**: CONTRIBUTING.md, CODE_OF_CONDUCT.md, issue templates
+- **Wiki presence**: Whether the GitHub wiki is enabled
+
+**Scoring algorithm (weighted composite):**
+1. **README quality (40%)**: Length + key sections count
+2. **Documentation coverage (30%)**: Docs directory presence + file count
+3. **Accessibility (20%)**: Contributing guide + Code of Conduct + issue templates
+4. **Multi-language support (10%)**: Number of additional language READMEs
+
+The composite score (0-100%) is then mapped to 1-5 scale using thresholds:
+- **1 (0-20%)**: No or very poor documentation
+- **2 (20-40%)**: Partial or obsolete documentation
+- **3 (40-60%)**: OK documentation
+- **4 (60-80%)**: Full documentation with good structure
+- **5 (80-100%)**: Excellent documentation with multi-language support and contribution guides
 
 ### Work Mode: Database Integration
 
@@ -161,14 +185,14 @@ Key tables referenced in the code:
 ### Threshold Configuration
 
 All thresholds are centralized in `main.go` as package-level variables:
-- Community thresholds use time durations (nanoseconds): 1 year maturity, 1 month activity
+- Community thresholds use time durations (nanoseconds): 1 year maturity, 1 month activity; and percentage-based for documentation: [20, 40, 60, 80]
 - Tech thresholds use code metrics: 1k-1M LOC for size, 1-20% for complexity
 - Security uses weighted map (not thresholds): 1-4 importance scale
 
 ### Field Slug Mapping
 
 Work mode maps computed scores to database fields using slugs:
-- `maturity`, `activity`, `popularity`, `contributors` → Community scores
+- `maturity`, `activity`, `popularity`, `contributors`, `documentation` → Community scores
 - `size`, `complexity`, `duplication`, `code-smells` → Tech scores
 - `scorecard` → Security score
 

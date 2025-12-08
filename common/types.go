@@ -7,10 +7,11 @@ type ProjectScores struct {
 }
 
 type CommunityScores struct {
-	Maturity     int64
-	Activity     int64
-	Popularity   int64
-	Contributors int64
+	Maturity      int64
+	Activity      int64
+	Popularity    int64
+	Contributors  int64
+	Documentation int64
 }
 
 type TechScores struct {

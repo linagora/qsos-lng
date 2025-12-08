@@ -11,7 +11,7 @@ multiple sources:
 
 The tool computes normalized scores across three main categories:
 
-1. **Community**: Maturity, activity, popularity, and contributor engagement
+1. **Community**: Maturity, activity, popularity, contributor engagement, and documentation quality
 2. **Technical Quality**: Code size, cyclomatic/cognitive complexity, duplication, and code smells
 3. **Security**: Weighted scorecard checks for security best practices
 

@@ -9,10 +9,11 @@ import (
 // ComputeAll computes all community scores at once
 func ComputeAll(data *CommunityData, thresholds *CommunityThresholds) *common.CommunityScores {
 	return &common.CommunityScores{
-		Maturity:     ComputeMaturity(data, thresholds.Maturity),
-		Activity:     ComputeActivity(data, thresholds.Activity),
-		Popularity:   ComputePopularity(data, thresholds.Popularity),
-		Contributors: ComputeContributors(data, thresholds.Contributors),
+		Maturity:      ComputeMaturity(data, thresholds.Maturity),
+		Activity:      ComputeActivity(data, thresholds.Activity),
+		Popularity:    ComputePopularity(data, thresholds.Popularity),
+		Contributors:  ComputeContributors(data, thresholds.Contributors),
+		Documentation: ComputeDocumentation(data.Documentation, thresholds.Documentation),
 	}
 }
 
