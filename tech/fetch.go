@@ -111,6 +111,16 @@ func getSonarStats(owner, repo string, sonarqubeURL *url.URL, sonarToken string)
 		return nil, fmt.Errorf("cannot get sonar issues: %w", err)
 	}
 	data.BrainOverload = nb
+
+	log.Printf("\n--- Sonarqube Statistics ---\n")
+	log.Printf("Number of lines of code: %d\n", data.LinesOfCode)
+	log.Printf("Number of functions:     %d\n", data.Functions)
+	log.Printf("Cyclomatic complexity:   %d\n", data.CyclomaticComplexity)
+	log.Printf("Cognitive complexity:    %d\n", data.CognitiveComplexity)
+	log.Printf("Brain-overload issues:   %d\n", data.BrainOverload)
+	log.Printf("Number of code smells:   %d\n", data.CodeSmells)
+	log.Printf("Duplication density:     %.1f\n", data.DuplicationDensity)
+
 	return data, nil
 }
 

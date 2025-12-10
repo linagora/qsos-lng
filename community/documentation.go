@@ -3,6 +3,7 @@ package community
 import (
 	"context"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 
@@ -134,49 +135,98 @@ func countKeySections(content string) int64 {
 // ComputeDocumentation calculates the documentation quality score
 // Score is based on a weighted combination of multiple factors
 func ComputeDocumentation(data *DocumentationData, threshold [4]int64) int64 {
+	log.Printf("\n=== Documentation Score Computation ===")
+
+	// Log raw metrics
+	log.Printf("Raw Metrics:")
+	log.Printf("  README length (words): %d", data.ReadmeLength)
+	log.Printf("  Key sections count: %d", data.KeySectionsCount)
+	log.Printf("  Has docs directory: %v", data.HasDocsDirectory)
+	log.Printf("  Docs file count: %d", data.DocsFileCount)
+	log.Printf("  Has CONTRIBUTING.md: %v", data.HasContributing)
+	log.Printf("  Has CODE_OF_CONDUCT.md: %v", data.HasCodeOfConduct)
+	log.Printf("  Has issue templates: %v", data.HasIssueTemplates)
+	log.Printf("  Has wiki: %v", data.HasWiki)
+	log.Printf("  Multi-language READMEs: %d", data.MultiLanguageCount)
+
 	// Calculate a composite score based on multiple factors
 	score := int64(0)
 	maxScore := int64(0)
 
 	// README quality (weight: 40 points)
+	log.Printf("\nREADME Quality (40 points max):")
+
 	// - Length: 20 points
 	readmeLengthScore := common.ComputeScore(data.ReadmeLength, [4]int64{100, 500, 1500, 3000}, common.BiggerIsBetter)
-	score += readmeLengthScore * 4 // Scale to 20 points max (5 * 4)
+	readmeLengthPoints := readmeLengthScore * 4
+	log.Printf("  Length score: %d/5 → %d/20 points", readmeLengthScore, readmeLengthPoints)
+	score += readmeLengthPoints
 	maxScore += 20
 
 	// - Key sections: 20 points
 	keySectionsScore := common.ComputeScore(data.KeySectionsCount, [4]int64{2, 4, 6, 8}, common.BiggerIsBetter)
-	score += keySectionsScore * 4 // Scale to 20 points max (5 * 4)
+	keySectionsPoints := keySectionsScore * 4
+	log.Printf("  Key sections score: %d/5 → %d/20 points", keySectionsScore, keySectionsPoints)
+	score += keySectionsPoints
 	maxScore += 20
 
 	// Documentation coverage (weight: 30 points)
+	log.Printf("\nDocumentation Coverage (30 points max):")
 	if data.HasDocsDirectory {
 		// Docs directory exists: 15 points
+		log.Printf("  Docs directory exists: +15 points")
 		score += 15
 		// Number of files in docs: 15 points
 		docsScore := common.ComputeScore(data.DocsFileCount, [4]int64{1, 5, 15, 30}, common.BiggerIsBetter)
-		score += docsScore * 3 // Scale to 15 points max (5 * 3)
+		docsPoints := docsScore * 3
+		log.Printf("  Docs files score: %d/5 → %d/15 points", docsScore, docsPoints)
+		score += docsPoints
+	} else {
+		log.Printf("  No docs directory: 0/30 points")
 	}
 	maxScore += 30
 
 	// Accessibility (weight: 20 points)
+	log.Printf("\nAccessibility (20 points max):")
+	accessibilityPoints := int64(0)
 	if data.HasContributing {
+		log.Printf("  Has CONTRIBUTING.md: +8 points")
 		score += 8
+		accessibilityPoints += 8
 	}
 	if data.HasCodeOfConduct {
+		log.Printf("  Has CODE_OF_CONDUCT.md: +6 points")
 		score += 6
+		accessibilityPoints += 6
 	}
 	if data.HasIssueTemplates {
+		log.Printf("  Has issue templates: +6 points")
 		score += 6
+		accessibilityPoints += 6
+	}
+	if accessibilityPoints == 0 {
+		log.Printf("  No accessibility features: 0/20 points")
 	}
 	maxScore += 20
 
 	// Multi-language support (weight: 10 points)
+	log.Printf("\nMulti-language Support (10 points max):")
 	multiLangScore := common.ComputeScore(data.MultiLanguageCount, [4]int64{1, 2, 3, 5}, common.BiggerIsBetter)
-	score += multiLangScore * 2 // Scale to 10 points max (5 * 2)
+	multiLangPoints := multiLangScore * 2
+	log.Printf("  Multi-language score: %d/5 → %d/10 points", multiLangScore, multiLangPoints)
+	score += multiLangPoints
 	maxScore += 10
 
 	// Convert to percentage (0-100) then map to 1-5 scale using thresholds
 	percentage := (score * 100) / maxScore
-	return common.ComputeScore(percentage, threshold, common.BiggerIsBetter)
+	finalScore := common.ComputeScore(percentage, threshold, common.BiggerIsBetter)
+
+	log.Printf("\n=== Final Calculation ===")
+	log.Printf("Total points: %d/%d", score, maxScore)
+	log.Printf("Percentage: %d%%", percentage)
+	log.Printf("Thresholds: [%d%%, %d%%, %d%%, %d%%] → Scores [1, 2, 3, 4, 5]", threshold[0], threshold[1], threshold[2], threshold[3])
+	log.Printf("Final documentation score: %d/5", finalScore)
+	log.Printf("=====================================\n")
+
+	return finalScore
 }

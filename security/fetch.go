@@ -3,6 +3,7 @@ package security
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os/exec"
 )
 
@@ -25,5 +26,11 @@ func Fetch(owner, repo, githubToken string) (*SecurityData, error) {
 	if err := json.Unmarshal(output, &data); err != nil {
 		return nil, fmt.Errorf("Unexpected output from scorecard: %w", err)
 	}
+
+	log.Printf("\n--- ScoreCard checks ---\n")
+	for _, check := range data.Checks {
+		log.Printf("%-24s: %d\n", check.Name, check.Score)
+	}
+
 	return &data, nil
 }

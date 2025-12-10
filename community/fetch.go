@@ -3,6 +3,7 @@ package community
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -99,6 +100,13 @@ func Fetch(ctx context.Context, client *github.Client, owner, repo string) (*Com
 		return nil, fmt.Errorf("FetchDocumentation failed: %w", err)
 	}
 	data.Documentation = docData
+
+	// 6. Log data
+	log.Printf("\n--- GitHub Project Statistics ---\n")
+	log.Printf("Date of the First Commit: %s\n", data.FirstCommitDate.Format("2006-01-02 15:04:05 MST"))
+	log.Printf("Date of the Last Commit:  %s\n", data.LastCommitDate.Format("2006-01-02 15:04:05 MST"))
+	log.Printf("Number of Stars:          %d\n", data.Stars)
+	log.Printf("Active contributors:      %d\n", data.ActiveContributors)
 
 	return data, nil
 }

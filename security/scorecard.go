@@ -31,7 +31,7 @@ func ComputeScorecard(data *SecurityData, weights map[string]int64) int64 {
 			divisor += weight
 		}
 		if !found {
-			log.Fatalf("check %s not found in scorecard scores\n", name)
+			log.Printf("check %s not found in scorecard scores\n", name)
 		}
 	}
 	return (sum + 1) / divisor / 2

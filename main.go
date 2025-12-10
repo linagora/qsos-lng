@@ -327,7 +327,6 @@ func process(repositoryURL string, githubClient *github.Client, githubToken, son
 	parsedURL, err := url.Parse(repositoryURL)
 	if err != nil {
 		return nil, fmt.Errorf("cannot parse repositoryURL: %v", err)
-		log.Fatalf("Failed to parse repository URL '%s': %v", repositoryURL, err)
 	}
 	if parsedURL.Host != "github.com" {
 		return nil, fmt.Errorf("only github.com projects are supported")
@@ -345,15 +344,15 @@ func process(repositoryURL string, githubClient *github.Client, githubToken, son
 
 	communityData, err := community.Fetch(ctx, githubClient, owner, repo)
 	if err != nil {
-		log.Fatalf("Failed to fetch community data: %v", err)
+		return nil, fmt.Errorf("Failed to fetch community data: %v", err)
 	}
 	techData, err := tech.Fetch(owner, repo, sonarqubeURL, sonarToken)
 	if err != nil {
-		log.Fatalf("Failed to fetch tech data: %v", err)
+		return nil, fmt.Errorf("Failed to fetch tech data: %v", err)
 	}
 	securityData, err := security.Fetch(owner, repo, githubToken)
 	if err != nil {
-		log.Fatalf("Failed to fetch security data: %v", err)
+		return nil, fmt.Errorf("Failed to fetch security data: %v", err)
 	}
 
 	communityScores := community.ComputeAll(communityData, communityThresholds)
@@ -436,24 +435,7 @@ func analyze(project string) {
 	}
 
 	// Display results
-	fmt.Printf("\n--- GitHub Project Statistics ---\n")
-	fmt.Printf("Date of the First Commit: %s\n", communityData.FirstCommitDate.Format("2006-01-02 15:04:05 MST"))
-	fmt.Printf("Date of the Last Commit:  %s\n", communityData.LastCommitDate.Format("2006-01-02 15:04:05 MST"))
-	fmt.Printf("Number of Stars:          %d\n", communityData.Stars)
-	fmt.Printf("Active contributors:      %d\n", communityData.ActiveContributors)
-	fmt.Printf("\n--- Sonarqube Statistics ---\n")
-	fmt.Printf("Number of lines of code: %d\n", techData.LinesOfCode)
-	fmt.Printf("Number of functions:     %d\n", techData.Functions)
-	fmt.Printf("Cyclomatic complexity:   %d\n", techData.CyclomaticComplexity)
-	fmt.Printf("Cognitive complexity:    %d\n", techData.CognitiveComplexity)
-	fmt.Printf("Brain-overload issues:   %d\n", techData.BrainOverload)
-	fmt.Printf("Number of code smells:   %d\n", techData.CodeSmells)
-	fmt.Printf("Duplication density:     %.1f\n", techData.DuplicationDensity)
-	fmt.Printf("\n--- ScoreCard checks ---\n")
-	for _, check := range securityData.Checks {
-		fmt.Printf("%-24s: %d\n", check.Name, check.Score)
-	}
-
+	fmt.Printf("\n=== %s ===\n", project)
 	fmt.Printf("\n--- Community ---\n")
 	fmt.Printf("Maturity:      %d\n", scores.Community.Maturity)
 	fmt.Printf("Activity:      %d\n", scores.Community.Activity)
