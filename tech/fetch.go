@@ -44,6 +44,9 @@ func Fetch(owner, repo, sonarqubeURL, sonarToken string) (*TechData, error) {
 			return nil, err
 		}
 		if data.LinesOfCode > 0 && data.BrainOverload > 0 {
+			if data.Functions == 0 {
+				return nil, fmt.Errorf("sonarqube analysis has failed, no function detected")
+			}
 			return data, nil
 		}
 		log.Printf("measures not yet available in Sonarqube")

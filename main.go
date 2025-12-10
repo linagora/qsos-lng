@@ -243,6 +243,22 @@ func work() {
 			"scorecard":     float64(scores.Security.ScoreCard),
 		}
 
+		// Log computed scores
+		fmt.Printf("Computed scores:\n")
+		fmt.Printf("  Community:\n")
+		fmt.Printf("    - maturity:      %.0f\n", scoreResults["maturity"])
+		fmt.Printf("    - activity:      %.0f\n", scoreResults["activity"])
+		fmt.Printf("    - popularity:    %.0f\n", scoreResults["popularity"])
+		fmt.Printf("    - contributors:  %.0f\n", scoreResults["contributors"])
+		fmt.Printf("    - documentation: %.0f\n", scoreResults["documentation"])
+		fmt.Printf("  Tech:\n")
+		fmt.Printf("    - size:          %.0f\n", scoreResults["size"])
+		fmt.Printf("    - complexity:    %.0f\n", scoreResults["complexity"])
+		fmt.Printf("    - duplication:   %.0f\n", scoreResults["duplication"])
+		fmt.Printf("    - code-smells:   %.0f\n", scoreResults["code-smells"])
+		fmt.Printf("  Security:\n")
+		fmt.Printf("    - scorecard:     %.0f\n", scoreResults["scorecard"])
+
 		tx, err := conn.Begin(ctx)
 		if err != nil {
 			log.Printf("Failed to begin transaction: %v", err)
@@ -260,7 +276,7 @@ func work() {
 
 			_, err := tx.Exec(ctx, `
 				INSERT INTO categories_analysisresult (software_id, field_id, score, is_published, is_manual, created_at)
-				VALUES ($1, $2, $3, true, true, NOW())
+				VALUES ($1, $2, $3, true, false, NOW())
 			`, projectID, fieldID, score)
 
 			if err != nil {

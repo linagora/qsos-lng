@@ -25,34 +25,37 @@ func FetchDocumentation(ctx context.Context, client *github.Client, owner, repo 
 		}
 	}
 
-	// 2. Check for docs directory
-	_, dirContent, _, err := client.Repositories.GetContents(ctx, owner, repo, "docs", nil)
-	if err == nil && dirContent != nil {
-		data.HasDocsDirectory = true
-		data.DocsFileCount = int64(len(dirContent))
-	}
-
-	// Alternative locations for docs
-	if !data.HasDocsDirectory {
-		_, dirContent, _, err := client.Repositories.GetContents(ctx, owner, repo, "doc", nil)
-		if err == nil && dirContent != nil {
-			data.HasDocsDirectory = true
-			data.DocsFileCount = int64(len(dirContent))
-		}
-	}
-
-	// 3. Check for multi-language READMEs
+	// 2. Fetch root directory once and check for both docs directory and multi-language READMEs
 	_, rootContent, _, err := client.Repositories.GetContents(ctx, owner, repo, "", nil)
 	if err == nil && rootContent != nil {
 		readmePattern := regexp.MustCompile(`(?i)^readme\.([a-z]{2})\.md$`)
+
 		for _, file := range rootContent {
-			if file.Name != nil && readmePattern.MatchString(*file.Name) {
+			if file.Name == nil {
+				continue
+			}
+
+			// Check for docs directory (case-insensitive: docs, Docs, doc, Doc, etc.)
+			if !data.HasDocsDirectory && file.Type != nil && *file.Type == "dir" {
+				nameLower := strings.ToLower(*file.Name)
+				if nameLower == "docs" || nameLower == "doc" {
+					// Found a docs directory, now get its contents
+					_, dirContent, _, err := client.Repositories.GetContents(ctx, owner, repo, *file.Name, nil)
+					if err == nil && dirContent != nil {
+						data.HasDocsDirectory = true
+						data.DocsFileCount = int64(len(dirContent))
+					}
+				}
+			}
+
+			// Check for multi-language READMEs
+			if readmePattern.MatchString(*file.Name) {
 				data.MultiLanguageCount++
 			}
 		}
 	}
 
-	// 4. Check for CONTRIBUTING.md
+	// 3. Check for CONTRIBUTING.md
 	_, _, _, err = client.Repositories.GetContents(ctx, owner, repo, "CONTRIBUTING.md", nil)
 	if err == nil {
 		data.HasContributing = true
@@ -64,28 +67,10 @@ func FetchDocumentation(ctx context.Context, client *github.Client, owner, repo 
 		}
 	}
 
-	// 5. Check for CODE_OF_CONDUCT.md
-	_, _, _, err = client.Repositories.GetContents(ctx, owner, repo, "CODE_OF_CONDUCT.md", nil)
-	if err == nil {
-		data.HasCodeOfConduct = true
-	}
-	if !data.HasCodeOfConduct {
-		_, _, _, err = client.Repositories.GetContents(ctx, owner, repo, ".github/CODE_OF_CONDUCT.md", nil)
-		if err == nil {
-			data.HasCodeOfConduct = true
-		}
-	}
-
-	// 6. Check for issue templates
+	// 4. Check for issue templates
 	_, issueTemplates, _, err := client.Repositories.GetContents(ctx, owner, repo, ".github/ISSUE_TEMPLATE", nil)
 	if err == nil && issueTemplates != nil && len(issueTemplates) > 0 {
 		data.HasIssueTemplates = true
-	}
-
-	// 7. Check if wiki is enabled (GitHub API doesn't provide direct wiki check, but we can infer from repository)
-	repository, _, err := client.Repositories.Get(ctx, owner, repo)
-	if err == nil && repository.HasWiki != nil && *repository.HasWiki {
-		data.HasWiki = true
 	}
 
 	return data, nil
@@ -135,7 +120,7 @@ func countKeySections(content string) int64 {
 // ComputeDocumentation calculates the documentation quality score
 // Score is based on a weighted combination of multiple factors
 func ComputeDocumentation(data *DocumentationData, threshold [4]int64) int64 {
-	log.Printf("\n=== Documentation Score Computation ===")
+	log.Printf("\n--- Documentation Score Computation ---")
 
 	// Log raw metrics
 	log.Printf("Raw Metrics:")
@@ -144,9 +129,7 @@ func ComputeDocumentation(data *DocumentationData, threshold [4]int64) int64 {
 	log.Printf("  Has docs directory: %v", data.HasDocsDirectory)
 	log.Printf("  Docs file count: %d", data.DocsFileCount)
 	log.Printf("  Has CONTRIBUTING.md: %v", data.HasContributing)
-	log.Printf("  Has CODE_OF_CONDUCT.md: %v", data.HasCodeOfConduct)
 	log.Printf("  Has issue templates: %v", data.HasIssueTemplates)
-	log.Printf("  Has wiki: %v", data.HasWiki)
 	log.Printf("  Multi-language READMEs: %d", data.MultiLanguageCount)
 
 	// Calculate a composite score based on multiple factors
@@ -186,18 +169,13 @@ func ComputeDocumentation(data *DocumentationData, threshold [4]int64) int64 {
 	}
 	maxScore += 30
 
-	// Accessibility (weight: 20 points)
-	log.Printf("\nAccessibility (20 points max):")
+	// Accessibility (weight: 14 points)
+	log.Printf("\nAccessibility (14 points max):")
 	accessibilityPoints := int64(0)
 	if data.HasContributing {
 		log.Printf("  Has CONTRIBUTING.md: +8 points")
 		score += 8
 		accessibilityPoints += 8
-	}
-	if data.HasCodeOfConduct {
-		log.Printf("  Has CODE_OF_CONDUCT.md: +6 points")
-		score += 6
-		accessibilityPoints += 6
 	}
 	if data.HasIssueTemplates {
 		log.Printf("  Has issue templates: +6 points")
@@ -205,9 +183,9 @@ func ComputeDocumentation(data *DocumentationData, threshold [4]int64) int64 {
 		accessibilityPoints += 6
 	}
 	if accessibilityPoints == 0 {
-		log.Printf("  No accessibility features: 0/20 points")
+		log.Printf("  No accessibility features: 0/14 points")
 	}
-	maxScore += 20
+	maxScore += 14
 
 	// Multi-language support (weight: 10 points)
 	log.Printf("\nMulti-language Support (10 points max):")
@@ -221,12 +199,11 @@ func ComputeDocumentation(data *DocumentationData, threshold [4]int64) int64 {
 	percentage := (score * 100) / maxScore
 	finalScore := common.ComputeScore(percentage, threshold, common.BiggerIsBetter)
 
-	log.Printf("\n=== Final Calculation ===")
+	log.Printf("\n--- Final Calculation ---")
 	log.Printf("Total points: %d/%d", score, maxScore)
 	log.Printf("Percentage: %d%%", percentage)
 	log.Printf("Thresholds: [%d%%, %d%%, %d%%, %d%%] → Scores [1, 2, 3, 4, 5]", threshold[0], threshold[1], threshold[2], threshold[3])
 	log.Printf("Final documentation score: %d/5", finalScore)
-	log.Printf("=====================================\n")
 
 	return finalScore
 }
