@@ -2,14 +2,14 @@
 
 ## Project Overview
 
-QSOS::LNG analyzes open-source projects by collecting metrics from GitHub, SonarQube, and OpenSSF Scorecard, then computing normalized 1-5 scores across Community, Technical Quality, and Security categories.
+QSOS::LNG analyzes open-source projects by collecting metrics from GitHub, Lizard, and OpenSSF Scorecard, then computing normalized 1-5 scores across Community, Technical Quality, and Security categories.
 
 **Modes:**
 - `go run . analyze <owner/repo>` - One-shot analysis to stdout
 - `go run . work` - Background worker processing draft projects from PostgreSQL (shared with Django Argus du Libre)
 
 **Environment Variables:**
-- Required: `GITHUB_TOKEN`, `SONARQUBE_URL`, `SONARQUBE_TOKEN`, `AI_API_KEY`
+- Required: `GITHUB_TOKEN`, `AI_API_KEY`
 - Work mode: `DATABASE_URL`
 - Optional: `AI_BASE_URL`, `AI_MODEL` (defaults to `gpt-oss-120b`)
 
@@ -17,7 +17,7 @@ QSOS::LNG analyzes open-source projects by collecting metrics from GitHub, Sonar
 
 **Packages** (Fetch → Compute pattern):
 - `community/` - GitHub metadata, contributors, documentation
-- `tech/` - SonarQube code quality metrics
+- `tech/` - Code quality metrics via Lizard (lines of code, cyclomatic complexity)
 - `security/` - OpenSSF Scorecard security practices
 - `metadata/` - AI summaries (bilingual FR/EN), tags, icon URLs (simple-icons → devicons fallback)
 - `common/` - Shared scoring logic
@@ -58,5 +58,5 @@ QSOS::LNG analyzes open-source projects by collecting metrics from GitHub, Sonar
 
 **Field Slugs** (mapped to scores):
 - Community: `maturity`, `activity`, `popularity`, `contributors`, `documentation`
-- Tech: `size`, `complexity`, `duplication`, `code-smells`
+- Tech: `size`, `complexity`
 - Security: `scorecard`

@@ -15,11 +15,8 @@ type CommunityScores struct {
 }
 
 type TechScores struct {
-	Size                 int64
-	CyclomaticComplexity int64
-	CognitiveComplexity  int64
-	Duplication          int64
-	CodeSmells           int64
+	Size       int64
+	Complexity int64
 }
 
 type SecurityScores struct {

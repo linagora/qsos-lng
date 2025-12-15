@@ -6,13 +6,13 @@ QSOS::LNG analyzes Open-Source projects by collecting and scoring metrics from
 multiple sources:
 
 - **GitHub API**: Repository metadata, commit history, stars, and contributor activity
-- **SonarQube**: Code quality metrics including complexity, duplication, and code smells
+- **Lizard**: Code quality metrics (lines of code, cyclomatic complexity)
 - **OpenSSF Scorecard**: Security best practices and vulnerability checks
 
 The tool computes normalized scores across three main categories:
 
 1. **Community**: Maturity, activity, popularity, contributor engagement, and documentation quality
-2. **Technical Quality**: Code size, cyclomatic/cognitive complexity, duplication, and code smells
+2. **Technical Quality**: Code size and cyclomatic complexity (percentage of high-complexity functions)
 3. **Security**: Weighted scorecard checks for security best practices
 
 ## Usage
@@ -21,8 +21,6 @@ The tool computes normalized scores across three main categories:
 2. Configure with env variables:
    - `DATABASE_URL` for the PostgreSQL database connection string (e.g., `postgres://user:password@localhost:5432/dbname`)
    - `GITHUB_TOKEN` for the GitHub API token
-   - `SONARQUBE_URL` for the URL of a SonarQube server
-   - `SONARQUBE_TOKEN` for a token of this server
    - `AI_API_KEY` for the AI API key (used for generating summaries)
    - `AI_BASE_URL` (optional) for a custom AI API base URL
    - `AI_MODEL` (optional) for specifying a particular AI model
@@ -52,8 +50,3 @@ Configure these in your repository settings (Settings → Secrets and variables 
 4. Enter the project to analyze (e.g., `minio/minio`)
 5. View results in the workflow log
 
-## Notes
-
-Running sonar-scanner-cli can be quite slow. It may be practical to skip this
-step in development, when we already have data in SonarQube. For that, we can
-use the env variable `SKIP_SONAR_SCANNER=true` when running the analyzer.

@@ -33,11 +33,8 @@ var (
 	}
 
 	techThresholds = &tech.TechThresholds{
-		Size:                 [4]int64{1_000, 10_000, 100_000, 1_000_000},
-		CyclomaticComplexity: [4]int64{1, 5, 10, 20},
-		CognitiveComplexity:  [4]int64{1, 3, 5, 10},
-		Duplication:          [4]int64{3, 5, 10, 20},
-		CodeSmells:           [4]int64{50, 200, 500, 1_000},
+		Size:       [4]int64{1_000, 10_000, 100_000, 1_000_000},
+		Complexity: [4]int64{5, 10, 20, 30}, // Percentage of high-CCN functions (>15)
 	}
 
 	securityWeights = map[string]int64{
@@ -99,16 +96,6 @@ func work() {
 	}
 	githubClient := github.NewClient(nil).WithAuthToken(githubToken)
 
-	sonarqubeURL := os.Getenv("SONARQUBE_URL")
-	if sonarqubeURL == "" {
-		log.Fatalf("SONARQUBE_URL environment variable is not set")
-	}
-
-	sonarToken := os.Getenv("SONARQUBE_TOKEN")
-	if sonarToken == "" {
-		log.Fatalf("SONARQUBE_TOKEN environment variable is not set")
-	}
-
 	// Connect to the database
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -161,7 +148,7 @@ func work() {
 
 		fmt.Printf("Processing project ID %d: %s\n", projectID, repositoryURL)
 
-		scores, err := process(repositoryURL, githubClient, githubToken, sonarqubeURL, sonarToken)
+		scores, err := process(repositoryURL, githubClient, githubToken)
 		if err != nil {
 			log.Printf("Failed to process '%s': %v", repositoryURL, err)
 			continue
@@ -237,9 +224,7 @@ func work() {
 			"contributors":  float64(scores.Community.Contributors),
 			"documentation": float64(scores.Community.Documentation),
 			"size":          float64(scores.Tech.Size),
-			"complexity":    float64(scores.Tech.CognitiveComplexity),
-			"duplication":   float64(scores.Tech.Duplication),
-			"code-smells":   float64(scores.Tech.CodeSmells),
+			"complexity":    float64(scores.Tech.Complexity),
 			"scorecard":     float64(scores.Security.ScoreCard),
 		}
 
@@ -254,8 +239,6 @@ func work() {
 		fmt.Printf("  Tech:\n")
 		fmt.Printf("    - size:          %.0f\n", scoreResults["size"])
 		fmt.Printf("    - complexity:    %.0f\n", scoreResults["complexity"])
-		fmt.Printf("    - duplication:   %.0f\n", scoreResults["duplication"])
-		fmt.Printf("    - code-smells:   %.0f\n", scoreResults["code-smells"])
 		fmt.Printf("  Security:\n")
 		fmt.Printf("    - scorecard:     %.0f\n", scoreResults["scorecard"])
 
@@ -337,7 +320,7 @@ func work() {
 	}
 }
 
-func process(repositoryURL string, githubClient *github.Client, githubToken, sonarqubeURL, sonarToken string) (*common.ProjectScores, error) {
+func process(repositoryURL string, githubClient *github.Client, githubToken string) (*common.ProjectScores, error) {
 	ctx := context.Background()
 
 	parsedURL, err := url.Parse(repositoryURL)
@@ -362,7 +345,7 @@ func process(repositoryURL string, githubClient *github.Client, githubToken, son
 	if err != nil {
 		return nil, fmt.Errorf("Failed to fetch community data: %v", err)
 	}
-	techData, err := tech.Fetch(owner, repo, sonarqubeURL, sonarToken)
+	techData, err := tech.Fetch(owner, repo)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to fetch tech data: %v", err)
 	}
@@ -394,14 +377,6 @@ func analyze(project string) {
 		log.Fatalf("GITHUB_TOKEN environment variable is not set")
 	}
 	githubClient := github.NewClient(nil).WithAuthToken(githubToken)
-	sonarqubeURL := os.Getenv("SONARQUBE_URL")
-	if sonarqubeURL == "" {
-		log.Fatalf("SONARQUBE_URL environment variable is not set")
-	}
-	sonarToken := os.Getenv("SONARQUBE_TOKEN")
-	if sonarToken == "" {
-		log.Fatalf("SONARQUBE_TOKEN environment variable is not set")
-	}
 
 	// Fetch data from each category
 	ctx := context.Background()
@@ -426,7 +401,7 @@ func analyze(project string) {
 	if err != nil {
 		log.Fatalf("Failed to fetch community data: %v", err)
 	}
-	techData, err := tech.Fetch(owner, repo, sonarqubeURL, sonarToken)
+	techData, err := tech.Fetch(owner, repo)
 	if err != nil {
 		log.Fatalf("Failed to fetch tech data: %v", err)
 	}
@@ -459,11 +434,8 @@ func analyze(project string) {
 	fmt.Printf("Contributors:  %d\n", scores.Community.Contributors)
 	fmt.Printf("Documentation: %d\n", scores.Community.Documentation)
 	fmt.Printf("\n--- Tech ---\n")
-	fmt.Printf("Code size:             %d\n", scores.Tech.Size)
-	fmt.Printf("Cyclomatic complexity: %d\n", scores.Tech.CyclomaticComplexity)
-	fmt.Printf("Cognitive complexity:  %d\n", scores.Tech.CognitiveComplexity)
-	fmt.Printf("Duplication:           %d\n", scores.Tech.Duplication)
-	fmt.Printf("Code smells:           %d\n", scores.Tech.CodeSmells)
+	fmt.Printf("Code size:  %d\n", scores.Tech.Size)
+	fmt.Printf("Complexity: %d\n", scores.Tech.Complexity)
 	fmt.Printf("\n--- Security ---\n")
 	fmt.Printf("Scorecard: %d\n", scores.Security.ScoreCard)
 

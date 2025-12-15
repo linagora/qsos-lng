@@ -18,17 +18,6 @@ jobs:
       checks: read
       statuses: read
 
-    services:
-      sonarqube:
-        image: sonarqube:lts-community
-        ports:
-          - 9000:9000
-        options: >-
-          --health-cmd="wget -qO- http://localhost:9000/api/system/status | grep -q UP"
-          --health-interval=30s
-          --health-timeout=10s
-          --health-retries=10
-
     steps:
       - name: Checkout qsos-lng
         uses: actions/checkout@v4
@@ -41,34 +30,9 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
-      - name: Wait for SonarQube to be ready
-        run: |
-          echo "Waiting for SonarQube to be ready..."
-          for i in {1..60}; do
-            if curl -s http://localhost:9000/api/system/status | grep -q '"status":"UP"'; then
-              echo "SonarQube is ready!"
-              break
-            fi
-            echo "Attempt $i: SonarQube not ready yet, waiting..."
-            sleep 5
-          done
-
-      - name: Configure SonarQube
-        run: |
-          # Change default admin password
-          curl -u admin:admin -X POST "http://localhost:9000/api/users/change_password?login=admin&previousPassword=admin&password=NewAdminPassword123"
-
-          # Generate authentication token
-          TOKEN_RESPONSE=$(curl -s -u admin:NewAdminPassword123 -X POST "http://localhost:9000/api/user_tokens/generate?name=github-actions")
-          SONAR_TOKEN=$(echo $TOKEN_RESPONSE | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-          echo "SONAR_TOKEN=$SONAR_TOKEN" >> $GITHUB_ENV
-          echo "::add-mask::$SONAR_TOKEN"
-
       - name: Run analysis
         env:
           GITHUB_TOKEN: ${{ secrets.ANALYSIS_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
-          SONARQUBE_URL: http://localhost:9000
-          SONARQUBE_TOKEN: ${{ env.SONAR_TOKEN }}
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
           AI_MODEL: ${{ secrets.AI_MODEL }}
