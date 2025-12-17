@@ -36,7 +36,7 @@ func Fetch(owner, repo string) (*TechData, error) {
 		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		"-e", "HOME=/tmp",
 		"-v", fmt.Sprintf(`%s:/src`, tmpDir),
-		"python:3.11-alpine",
+		"python:3.13-alpine",
 		"sh", "-c", "pip install lizard --quiet && python -m lizard --csv /src",
 	)
 	var stdout, stderr bytes.Buffer
@@ -54,14 +54,53 @@ func Fetch(owner, repo string) (*TechData, error) {
 	}
 
 	log.Printf("\n--- Lizard Statistics ---\n")
-	log.Printf("Number of lines of code:        %d\n", data.LinesOfCode)
-	log.Printf("Number of functions:            %d\n", data.Functions)
-	log.Printf("High-complexity functions (>15): %d\n", data.HighComplexityFunctions)
+	log.Printf("Production code:\n")
+	log.Printf("  Lines of code:                %d\n", data.LinesOfCode)
+	log.Printf("  Number of functions:          %d\n", data.Functions)
+	log.Printf("  High-complexity functions (>15): %d\n", data.HighComplexityFunctions)
 	if data.Functions > 0 {
-		log.Printf("Percentage high-complexity:     %d%%\n", 100*data.HighComplexityFunctions/data.Functions)
+		log.Printf("  Percentage high-complexity:   %d%%\n", 100*data.HighComplexityFunctions/data.Functions)
 	}
+	log.Printf("Test code:\n")
+	log.Printf("  Lines of code:                %d\n", data.TestLinesOfCode)
+	log.Printf("  Number of functions:          %d\n", data.TestFunctions)
+	log.Printf("  Test/production ratio:        %.2f\n", data.TestRatio)
 
 	return data, nil
+}
+
+// isTestFile checks if a file path represents a test file
+// based on common test location patterns across different languages
+func isTestFile(filepath string) bool {
+	// Normalize path separators
+	filepath = strings.ReplaceAll(filepath, "\\", "/")
+	filepath = strings.ToLower(filepath)
+
+	// Go: *_test.go
+	// Python: test_*.py, *_test.py, or tests/ directory
+	if strings.Contains(filepath, "_test") || strings.Contains(filepath, "test_") {
+		return true
+	}
+
+	// JavaScript/TypeScript: .test.js, .spec.js, .test.ts, .spec.ts
+	if strings.Contains(filepath, ".test.") || strings.Contains(filepath, ".spec.") {
+		return true
+	}
+
+	// Check for test directories (most languages)
+	testDirs := []string{"/test/", "/tests/", "/__tests__/", "/t/", "specs"}
+	for _, dir := range testDirs {
+		if strings.Contains(filepath, dir) {
+			return true
+		}
+	}
+
+	// Java/Kotlin: src/test/
+	if strings.Contains(filepath, "src/test/") {
+		return true
+	}
+
+	return false
 }
 
 func parseLizardOutput(csvData []byte) (*TechData, error) {
@@ -71,23 +110,18 @@ func parseLizardOutput(csvData []byte) (*TechData, error) {
 		return nil, fmt.Errorf("cannot read CSV: %w", err)
 	}
 
-	// Handle empty results (no functions found)
 	if len(records) < 1 {
-		log.Printf("No functions detected by Lizard")
-		return &TechData{
-			LinesOfCode:             0,
-			Functions:               0,
-			HighComplexityFunctions: 0,
-		}, nil
+		return nil, fmt.Errorf("no code found by Lizard")
 	}
 
 	var totalNLOC, totalFunctions, highComplexityCount int64
+	var testNLOC, testFunctions int64
 
 	// Parse each function row (Lizard CSV has no header, start from row 0)
 	for i := 0; i < len(records); i++ {
 		record := records[i]
-		if len(record) < 2 {
-			log.Printf("Warning: skipping malformed CSV row %d with %d columns", i, len(record))
+		if len(record) < 7 {
+			log.Printf("Warning: skipping malformed CSV row %d with %d columns (need at least 7)", i, len(record))
 			continue
 		}
 
@@ -105,18 +139,37 @@ func parseLizardOutput(csvData []byte) (*TechData, error) {
 			continue
 		}
 
-		totalNLOC += nloc
-		totalFunctions++
+		// Column 6: filepath
+		filepath := strings.TrimSpace(record[6])
+		isTest := isTestFile(filepath)
 
-		// Count functions with CCN > 15
-		if ccn > 15 {
-			highComplexityCount++
+		// Accumulate metrics separately for test and production code
+		if isTest {
+			testNLOC += nloc
+			testFunctions++
+		} else {
+			totalNLOC += nloc
+			totalFunctions++
+
+			// Only count complexity for production code
+			if ccn > 15 {
+				highComplexityCount++
+			}
 		}
+	}
+
+	// Calculate test ratio
+	var testRatio float64
+	if totalNLOC > 0 {
+		testRatio = float64(testNLOC) / float64(totalNLOC)
 	}
 
 	return &TechData{
 		LinesOfCode:             totalNLOC,
 		Functions:               totalFunctions,
 		HighComplexityFunctions: highComplexityCount,
+		TestLinesOfCode:         testNLOC,
+		TestFunctions:           testFunctions,
+		TestRatio:               testRatio,
 	}, nil
 }

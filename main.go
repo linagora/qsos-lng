@@ -33,8 +33,9 @@ var (
 	}
 
 	techThresholds = &tech.TechThresholds{
-		Size:       [4]int64{1_000, 10_000, 100_000, 1_000_000},
-		Complexity: [4]int64{5, 10, 20, 30}, // Percentage of high-CCN functions (>15)
+		Size:         [4]int64{1_000, 10_000, 100_000, 1_000_000},
+		Complexity:   [4]int64{5, 10, 20, 30},        // Percentage of high-CCN functions (>15)
+		TestCoverage: [4]float64{0.1, 0.4, 0.8, 1.6}, // Test/production ratio
 	}
 
 	securityWeights = map[string]int64{
@@ -225,6 +226,7 @@ func work() {
 			"documentation": float64(scores.Community.Documentation),
 			"size":          float64(scores.Tech.Size),
 			"complexity":    float64(scores.Tech.Complexity),
+			"tests":         float64(scores.Tech.TestCoverage),
 			"scorecard":     float64(scores.Security.ScoreCard),
 		}
 
@@ -239,6 +241,7 @@ func work() {
 		fmt.Printf("  Tech:\n")
 		fmt.Printf("    - size:          %.0f\n", scoreResults["size"])
 		fmt.Printf("    - complexity:    %.0f\n", scoreResults["complexity"])
+		fmt.Printf("    - tests:         %.0f\n", scoreResults["test_coverage"])
 		fmt.Printf("  Security:\n")
 		fmt.Printf("    - scorecard:     %.0f\n", scoreResults["scorecard"])
 
@@ -442,8 +445,9 @@ func analyze(project string) {
 	fmt.Printf("Contributors:  %d\n", scores.Community.Contributors)
 	fmt.Printf("Documentation: %d\n", scores.Community.Documentation)
 	fmt.Printf("\n--- Tech ---\n")
-	fmt.Printf("Code size:  %d\n", scores.Tech.Size)
-	fmt.Printf("Complexity: %d\n", scores.Tech.Complexity)
+	fmt.Printf("Code size:     %d\n", scores.Tech.Size)
+	fmt.Printf("Complexity:    %d\n", scores.Tech.Complexity)
+	fmt.Printf("Test coverage: %d\n", scores.Tech.TestCoverage)
 	fmt.Printf("\n--- Security ---\n")
 	fmt.Printf("Scorecard: %d\n", scores.Security.ScoreCard)
 

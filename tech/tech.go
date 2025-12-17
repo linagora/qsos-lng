@@ -5,8 +5,9 @@ import "github.com/linagora/qsos-lng/common"
 // ComputeAll computes all tech scores at once
 func ComputeAll(data *TechData, thresholds *TechThresholds) *common.TechScores {
 	return &common.TechScores{
-		Size:       ComputeSize(data, thresholds.Size),
-		Complexity: ComputeComplexity(data, thresholds.Complexity),
+		Size:         ComputeSize(data, thresholds.Size),
+		Complexity:   ComputeComplexity(data, thresholds.Complexity),
+		TestCoverage: ComputeTestCoverage(data, thresholds.TestCoverage),
 	}
 }
 
@@ -24,4 +25,13 @@ func ComputeComplexity(data *TechData, threshold [4]int64) int64 {
 	// Calculate percentage of high-complexity functions
 	pct := int64(100 * data.HighComplexityFunctions / data.Functions)
 	return common.ComputeScore(pct, threshold, common.SmallerIsBetter)
+}
+
+// ComputeTestCoverage calculates the test coverage score
+// based on the ratio of test code to production code
+func ComputeTestCoverage(data *TechData, threshold [4]float64) int64 {
+	if data.LinesOfCode == 0 {
+		return 1 // No production code = poor score
+	}
+	return common.ComputeScoreFloat(data.TestRatio, threshold, common.BiggerIsBetter)
 }

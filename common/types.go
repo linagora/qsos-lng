@@ -15,8 +15,9 @@ type CommunityScores struct {
 }
 
 type TechScores struct {
-	Size       int64
-	Complexity int64
+	Size        int64
+	Complexity  int64
+	TestCoverage int64
 }
 
 type SecurityScores struct {
