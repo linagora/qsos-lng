@@ -25,6 +25,7 @@ Tags should be:
 - Descriptive of the project's domain, technology, or purpose
 - Lowercase
 - Generic enough to be reused across similar projects
+- But not too generic (like tool or software)
 
 Prioritize reusing existing tags when they are relevant. Here is the list of existing tags in the database:
 %s
