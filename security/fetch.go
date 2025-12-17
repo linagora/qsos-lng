@@ -8,7 +8,7 @@ import (
 )
 
 // Fetch retrieves all security-related data from OpenSSF Scorecard
-func Fetch(owner, repo, githubToken string) (*SecurityData, error) {
+func Fetch(owner, repo, githubToken string, isMirror bool) (*SecurityData, error) {
 	// TODO make the command configurable
 	cmd := exec.Command(
 		"docker", "run", "--rm", "--net=host",
@@ -32,5 +32,6 @@ func Fetch(owner, repo, githubToken string) (*SecurityData, error) {
 		log.Printf("%-24s: %d\n", check.Name, check.Score)
 	}
 
+	data.IsMirror = isMirror
 	return &data, nil
 }

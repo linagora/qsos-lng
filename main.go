@@ -341,6 +341,13 @@ func process(repositoryURL string, githubClient *github.Client, githubToken stri
 
 	fmt.Printf("Processing project %s/%s\n", owner, repo)
 
+	// Get repository info to check if it's a mirror
+	repository, _, err := githubClient.Repositories.Get(ctx, owner, repo)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to fetch repository info: %v", err)
+	}
+	isMirror := repository.MirrorURL != nil
+
 	communityData, err := community.Fetch(ctx, githubClient, owner, repo)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to fetch community data: %v", err)
@@ -349,7 +356,7 @@ func process(repositoryURL string, githubClient *github.Client, githubToken stri
 	if err != nil {
 		return nil, fmt.Errorf("Failed to fetch tech data: %v", err)
 	}
-	securityData, err := security.Fetch(owner, repo, githubToken)
+	securityData, err := security.Fetch(owner, repo, githubToken, isMirror)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to fetch security data: %v", err)
 	}
@@ -381,7 +388,7 @@ func analyze(project string) {
 	// Fetch data from each category
 	ctx := context.Background()
 
-	// Get repository info for language
+	// Get repository info for language and mirror status
 	repository, _, err := githubClient.Repositories.Get(ctx, owner, repo)
 	if err != nil {
 		log.Fatalf("Failed to fetch repository info: %v", err)
@@ -390,6 +397,7 @@ func analyze(project string) {
 	if repository.Language != nil {
 		language = *repository.Language
 	}
+	isMirror := repository.MirrorURL != nil
 
 	// Get icon URL
 	iconURL, err := metadata.GetIconURL(ctx, githubClient, owner, repo, language)
@@ -405,7 +413,7 @@ func analyze(project string) {
 	if err != nil {
 		log.Fatalf("Failed to fetch tech data: %v", err)
 	}
-	securityData, err := security.Fetch(owner, repo, githubToken)
+	securityData, err := security.Fetch(owner, repo, githubToken, isMirror)
 	if err != nil {
 		log.Fatalf("Failed to fetch security data: %v", err)
 	}

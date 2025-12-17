@@ -27,6 +27,11 @@ func ComputeScorecard(data *SecurityData, weights map[string]int64) int64 {
 			if check.Score == -1 { // -1 means that it doesn't apply
 				continue
 			}
+			// Skip Dependency-Update-Tool if score is 0 and repo is a mirror
+			if name == "Dependency-Update-Tool" && check.Score == 0 && data.IsMirror {
+				log.Printf("Skipping %s (score 0 on mirror repository)\n", name)
+				continue
+			}
 			sum += check.Score * weight
 			divisor += weight
 		}
@@ -34,5 +39,5 @@ func ComputeScorecard(data *SecurityData, weights map[string]int64) int64 {
 			log.Printf("check %s not found in scorecard scores\n", name)
 		}
 	}
-	return (sum + 1) / divisor / 2
+	return 1 + (sum-1)/divisor/2
 }

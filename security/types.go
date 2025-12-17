@@ -6,4 +6,5 @@ type SecurityData struct {
 		Name  string
 		Score int64
 	}
+	IsMirror bool
 }
