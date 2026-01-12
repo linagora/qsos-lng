@@ -12,10 +12,9 @@ import (
 
 // Evaluate evaluates a formula and returns the result
 func (e *Evaluator) Evaluate(ctx context.Context, formula string) (float64, error) {
-	// Create a metric provider that reads from the database
-	provider := &dbMetricProvider{
-		db:         e.db,
-		lookup:     e.lookup,
+	// Create a metric provider that reads from the store
+	provider := &storeMetricProvider{
+		store:      e.store,
 		softwareID: e.softwareID,
 	}
 
@@ -25,29 +24,15 @@ func (e *Evaluator) Evaluate(ctx context.Context, formula string) (float64, erro
 	return parser.parseExpression()
 }
 
-// dbMetricProvider implements MetricProvider using the database
-type dbMetricProvider struct {
-	db         *database.DB
-	lookup     *database.MetricLookup
+// storeMetricProvider implements MetricProvider using a MetricStore
+type storeMetricProvider struct {
+	store      database.MetricStore
 	softwareID int64
 }
 
-// GetMetric retrieves the latest metric value from the database
-func (p *dbMetricProvider) GetMetric(ctx context.Context, slug string) (float64, error) {
-	metricID, err := p.lookup.GetMetricID(slug)
-	if err != nil {
-		return 0, err
-	}
-
-	var value float64
-	err = p.db.Conn.QueryRow(ctx, `
-		SELECT value
-		FROM categories_metricvalue
-		WHERE metric_id = $1 AND software_id = $2
-		ORDER BY collected_at DESC
-		LIMIT 1
-	`, metricID, p.softwareID).Scan(&value)
-
+// GetMetric retrieves the latest metric value from the store
+func (p *storeMetricProvider) GetMetric(ctx context.Context, slug string) (float64, error) {
+	value, err := p.store.GetMetricValue(ctx, p.softwareID, slug)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get metric '%s': %w", slug, err)
 	}

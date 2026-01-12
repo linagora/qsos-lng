@@ -13,6 +13,7 @@ import (
 type Executor struct {
 	cfg          *config.Config
 	db           *database.DB
+	store        database.MetricStore
 	lookup       *database.MetricLookup
 	fieldMap     map[string]int64
 	githubClient *github.Client
@@ -33,6 +34,7 @@ type ExecutionContext struct {
 func NewExecutor(
 	cfg *config.Config,
 	db *database.DB,
+	store database.MetricStore,
 	lookup *database.MetricLookup,
 	fieldMap map[string]int64,
 	githubClient *github.Client,
@@ -41,6 +43,7 @@ func NewExecutor(
 	return &Executor{
 		cfg:          cfg,
 		db:           db,
+		store:        store,
 		lookup:       lookup,
 		fieldMap:     fieldMap,
 		githubClient: githubClient,

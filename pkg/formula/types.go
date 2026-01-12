@@ -8,16 +8,14 @@ import (
 
 // Evaluator evaluates formulas with metric references
 type Evaluator struct {
-	db         *database.DB
-	lookup     *database.MetricLookup
+	store      database.MetricStore
 	softwareID int64
 }
 
 // NewEvaluator creates a new formula evaluator
-func NewEvaluator(db *database.DB, lookup *database.MetricLookup, softwareID int64) *Evaluator {
+func NewEvaluator(store database.MetricStore, softwareID int64) *Evaluator {
 	return &Evaluator{
-		db:         db,
-		lookup:     lookup,
+		store:      store,
 		softwareID: softwareID,
 	}
 }

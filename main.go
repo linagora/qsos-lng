@@ -14,6 +14,7 @@ import (
 	"github.com/linagora/qsos-lng/pkg/config"
 	"github.com/linagora/qsos-lng/pkg/database"
 	"github.com/linagora/qsos-lng/pkg/engine"
+	"github.com/linagora/qsos-lng/pkg/formula"
 	"github.com/linagora/qsos-lng/pkg/sources"
 )
 
@@ -97,8 +98,11 @@ func work() {
 	}
 	log.Printf("Field map loaded: %d fields\n", len(fieldMap))
 
+	// Create metric store
+	store := database.NewPostgresMetricStore(db)
+
 	// Create execution engine
-	executor := engine.NewExecutor(cfg, db, lookup, fieldMap, githubClient, githubToken)
+	executor := engine.NewExecutor(cfg, db, store, lookup, fieldMap, githubClient, githubToken)
 
 	for {
 		// Query for a draft project
@@ -217,6 +221,17 @@ func analyze(project string) {
 	}
 	githubClient := github.NewClient(nil).WithAuthToken(githubToken)
 
+	// Load TOML configuration
+	cfg, err := config.LoadConfig("configs/qsos-default.toml")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Validate configuration
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("Invalid configuration: %v", err)
+	}
+
 	// Get repository info
 	repository, _, err := githubClient.Repositories.Get(ctx, owner, repo)
 	if err != nil {
@@ -234,16 +249,10 @@ func analyze(project string) {
 	fmt.Printf("Language: %s\n", language)
 	fmt.Printf("Is Mirror: %v\n", isMirror)
 
-	// Create temporary execution context (no database, software_id = 0)
-	// Note: This won't work with the full pipeline since scoring requires database
-	// For analyze mode, we'll just fetch and display raw metrics
-
-	fmt.Printf("\n--- Fetching Metrics ---\n")
-
-	// GitHub metrics
-	githubSource := sources.NewGitHubSource(githubClient)
+	// Create execution context with temporary software_id
+	const tempSoftwareID = 1
 	execCtx := &engine.ExecutionContext{
-		SoftwareID:    0,
+		SoftwareID:    tempSoftwareID,
 		Owner:         owner,
 		Repo:          repo,
 		RepositoryURL: fmt.Sprintf("https://github.com/%s/%s", owner, repo),
@@ -251,51 +260,82 @@ func analyze(project string) {
 		Language:      language,
 	}
 
-	fmt.Printf("\nGitHub Metrics:\n")
-	githubMetrics, err := githubSource.Fetch(ctx, execCtx)
-	if err != nil {
-		log.Printf("  Error: %v\n", err)
-	} else {
-		for _, m := range githubMetrics {
+	// Create source adapters
+	sourceAdapters := []engine.SourceAdapter{
+		sources.NewGitHubSource(githubClient),
+		sources.NewLizardSource(),
+		sources.NewScorecardSource(githubToken),
+		sources.NewDocumentationSource(githubClient),
+	}
+
+	// Collect all metrics
+	fmt.Printf("\n--- Fetching Metrics ---\n")
+	allMetrics := make([]engine.MetricResult, 0)
+	for _, source := range sourceAdapters {
+		fmt.Printf("\n%s:\n", source.Name())
+		metrics, err := source.Fetch(ctx, execCtx)
+		if err != nil {
+			log.Printf("  Error: %v\n", err)
+			continue
+		}
+		for _, m := range metrics {
 			fmt.Printf("  %s = %.2f\n", m.Slug, m.Value)
+			allMetrics = append(allMetrics, m)
 		}
 	}
 
-	// Lizard metrics
-	lizardSource := sources.NewLizardSource()
-	fmt.Printf("\nLizard Metrics:\n")
-	lizardMetrics, err := lizardSource.Fetch(ctx, execCtx)
-	if err != nil {
-		log.Printf("  Error: %v\n", err)
-	} else {
-		for _, m := range lizardMetrics {
-			fmt.Printf("  %s = %.2f\n", m.Slug, m.Value)
+	// Create in-memory metric store
+	store := database.NewInMemoryMetricStore()
+
+	// Create a simple in-memory lookup (no validation needed for analyze mode)
+	lookup := createInMemoryLookup(cfg)
+
+	// Store all metrics in the in-memory store
+	for _, m := range allMetrics {
+		if lookup.HasSlug(m.Slug) {
+			_ = store.InsertMetricValue(ctx, lookup, tempSoftwareID, database.MetricValueInsert{
+				MetricSlug: m.Slug,
+				Value:      m.Value,
+				Source:     m.Source,
+			})
 		}
 	}
 
-	// Scorecard metrics
-	scorecardSource := sources.NewScorecardSource(githubToken)
-	fmt.Printf("\nScorecard Metrics:\n")
-	scorecardMetrics, err := scorecardSource.Fetch(ctx, execCtx)
-	if err != nil {
-		log.Printf("  Error: %v\n", err)
-	} else {
-		for _, m := range scorecardMetrics {
-			fmt.Printf("  %s = %.2f\n", m.Slug, m.Value)
+	// Evaluate scores
+	fmt.Printf("\n--- Computing Scores ---\n")
+	evaluator := formula.NewEvaluator(store, tempSoftwareID)
+
+	for _, scoreDef := range cfg.Scores {
+		scoreValue, err := evaluator.Evaluate(ctx, scoreDef.Formula)
+		if err != nil {
+			fmt.Printf("  %s: Error - %v\n", scoreDef.Slug, err)
+		} else {
+			fmt.Printf("  %s = %.2f\n", scoreDef.Slug, scoreValue)
 		}
 	}
 
-	// Documentation metrics
-	docSource := sources.NewDocumentationSource(githubClient)
-	fmt.Printf("\nDocumentation Metrics:\n")
-	docMetrics, err := docSource.Fetch(ctx, execCtx)
-	if err != nil {
-		log.Printf("  Error: %v\n", err)
-	} else {
-		for _, m := range docMetrics {
-			fmt.Printf("  %s = %.2f\n", m.Slug, m.Value)
+	fmt.Printf("\nAnalysis complete!\n")
+}
+
+// createInMemoryLookup creates a simple in-memory metric lookup from config
+func createInMemoryLookup(cfg *config.Config) *database.MetricLookup {
+	slugToID := make(map[string]int64)
+	metrics := make(map[int64]*database.MetricInfo)
+
+	var id int64 = 1
+	for _, metricDef := range cfg.Metrics {
+		for _, field := range metricDef.Fields {
+			slugToID[field.MetricSlug] = id
+			metrics[id] = &database.MetricInfo{
+				ID:                id,
+				Slug:              field.MetricSlug,
+				Weight:            1,
+				CollectionEnabled: true,
+				FieldID:           0,
+			}
+			id++
 		}
 	}
 
-	fmt.Printf("\nNote: Scoring requires database connection. Use 'work' mode for full analysis with scoring.\n")
+	return database.NewInMemoryLookup(slugToID, metrics)
 }

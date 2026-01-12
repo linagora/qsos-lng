@@ -76,3 +76,11 @@ func (ml *MetricLookup) HasSlug(slug string) bool {
 	_, exists := ml.slugToID[slug]
 	return exists
 }
+
+// NewInMemoryLookup creates a MetricLookup from maps (for testing/analyze mode)
+func NewInMemoryLookup(slugToID map[string]int64, metrics map[int64]*MetricInfo) *MetricLookup {
+	return &MetricLookup{
+		slugToID: slugToID,
+		metrics:  metrics,
+	}
+}

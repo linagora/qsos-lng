@@ -44,7 +44,7 @@ func (e *Executor) Execute(ctx context.Context, execCtx *ExecutionContext, sourc
 				Source:     m.Source,
 			})
 		}
-		if err := e.db.InsertMetricValues(ctx, e.lookup, execCtx.SoftwareID, inserts); err != nil {
+		if err := e.store.InsertMetricValues(ctx, e.lookup, execCtx.SoftwareID, inserts); err != nil {
 			return fmt.Errorf("failed to store metrics: %w", err)
 		}
 		log.Printf("  Stored %d metrics (skipped %d unconfigured metrics)\n", len(inserts), skipped)
@@ -52,7 +52,7 @@ func (e *Executor) Execute(ctx context.Context, execCtx *ExecutionContext, sourc
 
 	// Step 3: Evaluate scores using formulas
 	log.Printf("Step 3: Evaluating scores...\n")
-	evaluator := formula.NewEvaluator(e.db, e.lookup, execCtx.SoftwareID)
+	evaluator := formula.NewEvaluator(e.store, execCtx.SoftwareID)
 	scores := make([]database.ScoreInsert, 0, len(e.cfg.Scores))
 
 	for _, scoreDef := range e.cfg.Scores {
