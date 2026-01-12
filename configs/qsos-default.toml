@@ -1,0 +1,166 @@
+# QSOS-LNG Default Configuration
+# This file defines metrics collection, scoring rules, metadata operations, and output settings
+
+# ============================================================================
+# METRICS COLLECTION
+# ============================================================================
+
+# GitHub repository information
+[[metrics]]
+name = "github_repo_info"
+fields = [
+    { api_field = "stargazers_count", metric_slug = "stars" },
+    { api_field = "is_mirror", metric_slug = "is_mirror" }
+]
+
+# GitHub commit history (computes derived metrics)
+[[metrics]]
+name = "github_commits"
+fields = [
+    { api_field = "days_since_first_commit", metric_slug = "maturity_days" },
+    { api_field = "days_since_last_commit", metric_slug = "activity_days" }
+]
+
+# GitHub contributors (active: >3 commits, last 6 months, no bots)
+[[metrics]]
+name = "github_contributors"
+fields = [
+    { api_field = "count", metric_slug = "active_contributors" }
+]
+
+# Lizard code analysis
+[[metrics]]
+name = "lizard_analysis"
+fields = [
+    { api_field = "loc", metric_slug = "lines_of_code" },
+    { api_field = "test_loc", metric_slug = "test_lines_of_code" },
+    { api_field = "test_ratio", metric_slug = "test_ratio" },
+    { api_field = "complexity", metric_slug = "complexity" },
+    { api_field = "high_complexity_count", metric_slug = "high_complexity_functions" },
+    { api_field = "function_count", metric_slug = "functions" }
+]
+
+# OpenSSF Scorecard checks
+[[metrics]]
+name = "scorecard_checks"
+fields = [
+    { api_field = "Vulnerabilities", metric_slug = "scorecard_vulnerabilities" },
+    { api_field = "Security-Policy", metric_slug = "scorecard_security_policy" },
+    { api_field = "Binary-Artifacts", metric_slug = "scorecard_binary_artifacts" },
+    { api_field = "Branch-Protection", metric_slug = "scorecard_branch_protection" },
+    { api_field = "Code-Review", metric_slug = "scorecard_code_review" },
+    { api_field = "Pinned-Dependencies", metric_slug = "scorecard_pinned_dependencies" },
+    { api_field = "Packaging", metric_slug = "scorecard_packaging" },
+    { api_field = "Signed-Releases", metric_slug = "scorecard_signed_releases" }
+]
+
+# Documentation metrics
+[[metrics]]
+name = "documentation_analysis"
+fields = [
+    { api_field = "readme_quality", metric_slug = "readme_quality" },
+    { api_field = "readme_sections", metric_slug = "readme_sections" },
+    { api_field = "docs_directory", metric_slug = "docs_directory" },
+    { api_field = "accessibility", metric_slug = "accessibility" },
+    { api_field = "multilang_readmes", metric_slug = "multilang_readmes" }
+]
+
+# ============================================================================
+# SCORING RULES
+# ============================================================================
+
+# Community Category
+
+[[scores]]
+slug = "maturity"
+formula = "compute_score(metric.maturity_days, [365, 1825, 3650, 7300], 'bigger_is_better')"
+
+[[scores]]
+slug = "activity"
+formula = "compute_score(metric.activity_days, [30, 180, 365, 730], 'smaller_is_better')"
+
+[[scores]]
+slug = "popularity"
+formula = "compute_score(metric.stars, [5000, 20000, 40000, 80000], 'bigger_is_better')"
+
+[[scores]]
+slug = "contributors"
+formula = "compute_score(metric.active_contributors, [1, 5, 20, 50], 'bigger_is_better')"
+
+[[scores]]
+slug = "documentation"
+formula = """
+  compute_score(
+    metric.readme_quality * 0.4 +
+    metric.readme_sections * 0.2 +
+    metric.docs_directory * 0.3 +
+    metric.accessibility * 0.1,
+    [20, 40, 60, 80],
+    'bigger_is_better'
+  )
+"""
+
+# Technical Quality Category
+
+[[scores]]
+slug = "size"
+formula = "compute_score(metric.lines_of_code, [1000, 10000, 100000, 1000000], 'smaller_is_better')"
+
+[[scores]]
+slug = "complexity"
+formula = "compute_score(metric.complexity, [5, 10, 20, 30], 'smaller_is_better')"
+
+[[scores]]
+slug = "tests"
+formula = "compute_score(metric.test_ratio, [0.1, 0.4, 0.8, 1.6], 'bigger_is_better')"
+
+# Security Category
+
+[[scores]]
+slug = "scorecard"
+formula = """
+  1 + weighted_avg([
+    metric.scorecard_vulnerabilities * 3,
+    metric.scorecard_security_policy * 2,
+    metric.scorecard_binary_artifacts * 3,
+    metric.scorecard_branch_protection * 3,
+    if(metric.is_mirror == 1, 0, metric.scorecard_code_review * 3),
+    metric.scorecard_pinned_dependencies * 2,
+    metric.scorecard_packaging * 2,
+    metric.scorecard_signed_releases * 3
+  ], if(metric.is_mirror == 1, 18, 21)) / 2
+"""
+
+# ============================================================================
+# METADATA OPERATIONS
+# ============================================================================
+
+[[metadata]]
+name = "bilingual_summaries"
+type = "ai_summarize"
+save_to = "categories_block"
+
+[[metadata]]
+name = "project_tags"
+type = "ai_tags"
+save_to = "categories_tag"
+
+[[metadata]]
+name = "project_icon"
+type = "icon_url"
+save_to = "categories_software.logo_url"
+
+# ============================================================================
+# OUTPUT CONFIGURATION
+# ============================================================================
+
+[output]
+save_metrics = true
+metrics_table = "categories_metricvalue"
+save_scores = true
+score_table = "categories_analysisresult"
+update_software_state = "in_review"
+
+[output.score_metadata]
+is_published = true
+is_manual = false

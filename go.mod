@@ -3,6 +3,7 @@ module github.com/linagora/qsos-lng
 go 1.25.0
 
 require (
+	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/google/go-github/v76 v76.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
