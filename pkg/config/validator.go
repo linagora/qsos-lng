@@ -73,6 +73,19 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("output.save_scores is true but output.score_table is empty")
 	}
 
+	// Validate work mode configuration
+	if c.WorkMode.EnablePublishedUpdates {
+		if c.WorkMode.PublishedUpdateIntervalHours <= 0 {
+			return fmt.Errorf("work_mode.published_update_interval_hours must be positive")
+		}
+		if c.WorkMode.PublishedBatchSize <= 0 {
+			return fmt.Errorf("work_mode.published_batch_size must be positive")
+		}
+		if c.WorkMode.IdleSleepSeconds < 0 {
+			return fmt.Errorf("work_mode.idle_sleep_seconds must be non-negative")
+		}
+	}
+
 	return nil
 }
 

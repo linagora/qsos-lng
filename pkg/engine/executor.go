@@ -104,10 +104,20 @@ func (e *Executor) Execute(ctx context.Context, execCtx *ExecutionContext, sourc
 	}
 
 	// Step 6: Update software state
-	if e.cfg.Output.UpdateSoftwareState != "" {
-		log.Printf("Step 6: Updating software state to '%s'...\n", e.cfg.Output.UpdateSoftwareState)
-		if err := e.db.UpdateSoftwareState(ctx, execCtx.SoftwareID, e.cfg.Output.UpdateSoftwareState); err != nil {
-			return fmt.Errorf("failed to update software state: %w", err)
+	if execCtx.IsPublishedUpdate {
+		// For published updates, preserve the 'published' state and update timestamp
+		log.Printf("Step 6: Skipping state update (preserving 'published' state)\n")
+		log.Printf("  Updating last_metrics_update_at timestamp...\n")
+		if err := e.db.UpdateLastMetricsUpdateTime(ctx, execCtx.SoftwareID); err != nil {
+			log.Printf("  Warning: Failed to update last_metrics_update_at: %v\n", err)
+		}
+	} else {
+		// For draft projects, update state as configured
+		if e.cfg.Output.UpdateSoftwareState != "" {
+			log.Printf("Step 6: Updating software state to '%s'...\n", e.cfg.Output.UpdateSoftwareState)
+			if err := e.db.UpdateSoftwareState(ctx, execCtx.SoftwareID, e.cfg.Output.UpdateSoftwareState); err != nil {
+				return fmt.Errorf("failed to update software state: %w", err)
+			}
 		}
 	}
 

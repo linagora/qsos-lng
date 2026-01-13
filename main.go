@@ -105,104 +105,169 @@ func work() {
 	executor := engine.NewExecutor(cfg, db, store, lookup, fieldMap, githubClient, githubToken)
 
 	for {
-		// Query for a draft project
-		var projectID int
-		var repositoryURL string
-		err = db.Conn.QueryRow(ctx, `
-			SELECT id, repository_url
-			FROM categories_software
-			WHERE state = 'draft'
-			ORDER BY created_at ASC
-			LIMIT 1
-		`).Scan(&projectID, &repositoryURL)
+		// Priority 1: Draft projects (immediate processing)
+		project, err := db.GetNextDraftProject(ctx)
+		if err == nil {
+			processDraftProject(ctx, project, executor, githubClient, githubToken, db)
+			continue
+		}
 
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				time.Sleep(3 * time.Second)
-				continue
-			}
+		if err != pgx.ErrNoRows {
 			log.Fatalf("Failed to query database: %v", err)
 		}
 
-		fmt.Printf("Processing project ID %d: %s\n", projectID, repositoryURL)
+		// Priority 2: Published updates (idle time only)
+		if cfg.WorkMode.EnablePublishedUpdates {
+			projects, err := db.GetNextPublishedProjectToUpdate(ctx,
+				cfg.WorkMode.PublishedUpdateIntervalHours,
+				cfg.WorkMode.PublishedBatchSize)
 
-		// Parse repository URL
-		parsedURL, err := url.Parse(repositoryURL)
-		if err != nil {
-			log.Printf("Failed to parse repository URL '%s': %v", repositoryURL, err)
-			continue
-		}
-
-		parts := strings.Split(strings.TrimPrefix(parsedURL.Path, "/"), "/")
-		if len(parts) < 2 {
-			log.Printf("Invalid repository URL format '%s'", repositoryURL)
-			continue
-		}
-
-		owner := parts[0]
-		repo := strings.TrimSuffix(parts[1], ".git")
-
-		// Get repository info
-		repository, _, err := githubClient.Repositories.Get(ctx, owner, repo)
-		if err != nil {
-			log.Printf("Failed to fetch repository info: %v", err)
-			continue
-		}
-
-		language := ""
-		if repository.Language != nil {
-			language = *repository.Language
-		}
-
-		isMirror := repository.MirrorURL != nil
-
-		// Get website URL
-		websiteURL := ""
-		if repository.Homepage != nil && *repository.Homepage != "" {
-			websiteURL = *repository.Homepage
-		}
-
-		// Create execution context
-		execCtx := &engine.ExecutionContext{
-			SoftwareID:    int64(projectID),
-			Owner:         owner,
-			Repo:          repo,
-			RepositoryURL: repositoryURL,
-			IsMirror:      isMirror,
-			Language:      language,
-		}
-
-		// Create source adapters
-		sourceAdapters := []engine.SourceAdapter{
-			sources.NewGitHubSource(githubClient),
-			sources.NewLizardSource(),
-			sources.NewScorecardSource(githubToken),
-			sources.NewDocumentationSource(githubClient),
-		}
-
-		// Create metadata adapters
-		metadataAdapters := []engine.MetadataAdapter{
-			sources.NewBilingualSummaryAdapter(githubClient),
-			sources.NewTagsAdapter(githubClient),
-			sources.NewIconAdapter(githubClient),
-		}
-
-		// Execute pipeline
-		if err := executor.Execute(ctx, execCtx, sourceAdapters, metadataAdapters); err != nil {
-			log.Printf("Failed to execute pipeline: %v\n", err)
-			continue
-		}
-
-		// Update website URL if found
-		if websiteURL != "" {
-			_, err = db.Conn.Exec(ctx, "UPDATE categories_software SET website_url = $1 WHERE id = $2", websiteURL, projectID)
 			if err != nil {
-				log.Printf("Warning: Failed to update website URL: %v\n", err)
+				log.Printf("Failed to query published projects: %v", err)
+			} else if len(projects) > 0 {
+				for _, proj := range projects {
+					processPublishedProject(ctx, &proj, executor, githubClient, githubToken, db)
+				}
+				continue
 			}
 		}
 
-		fmt.Printf("Project ID %d analysis completed successfully\n\n", projectID)
+		// No work available
+		sleepDuration := time.Duration(cfg.WorkMode.IdleSleepSeconds) * time.Second
+		time.Sleep(sleepDuration)
 	}
+}
+
+// buildExecutionContext creates ExecutionContext from repository URL
+func buildExecutionContext(ctx context.Context, projectID int64, repositoryURL string,
+	githubClient *github.Client, isPublishedUpdate bool) (*engine.ExecutionContext, string) {
+
+	// Parse repository URL
+	parsedURL, err := url.Parse(repositoryURL)
+	if err != nil {
+		log.Printf("Failed to parse repository URL '%s': %v", repositoryURL, err)
+		return nil, ""
+	}
+
+	parts := strings.Split(strings.TrimPrefix(parsedURL.Path, "/"), "/")
+	if len(parts) < 2 {
+		log.Printf("Invalid repository URL format '%s'", repositoryURL)
+		return nil, ""
+	}
+
+	owner := parts[0]
+	repo := strings.TrimSuffix(parts[1], ".git")
+
+	// Get repository info
+	repository, _, err := githubClient.Repositories.Get(ctx, owner, repo)
+	if err != nil {
+		log.Printf("Failed to fetch repository info: %v", err)
+		return nil, ""
+	}
+
+	language := ""
+	if repository.Language != nil {
+		language = *repository.Language
+	}
+
+	isMirror := repository.MirrorURL != nil
+
+	// Get website URL
+	websiteURL := ""
+	if repository.Homepage != nil && *repository.Homepage != "" {
+		websiteURL = *repository.Homepage
+	}
+
+	return &engine.ExecutionContext{
+		SoftwareID:        projectID,
+		Owner:             owner,
+		Repo:              repo,
+		RepositoryURL:     repositoryURL,
+		IsMirror:          isMirror,
+		Language:          language,
+		IsPublishedUpdate: isPublishedUpdate,
+	}, websiteURL
+}
+
+// buildSourceAdapters creates all source adapters
+func buildSourceAdapters(githubClient *github.Client, githubToken string) []engine.SourceAdapter {
+	return []engine.SourceAdapter{
+		sources.NewGitHubSource(githubClient),
+		sources.NewLizardSource(),
+		sources.NewScorecardSource(githubToken),
+		sources.NewDocumentationSource(githubClient),
+	}
+}
+
+// buildMetadataAdapters creates all metadata adapters
+func buildMetadataAdapters(githubClient *github.Client) []engine.MetadataAdapter {
+	return []engine.MetadataAdapter{
+		sources.NewBilingualSummaryAdapter(githubClient),
+		sources.NewTagsAdapter(githubClient),
+		sources.NewIconAdapter(githubClient),
+	}
+}
+
+// processDraftProject handles draft project analysis with full pipeline
+func processDraftProject(ctx context.Context, project *database.ProjectInfo,
+	executor *engine.Executor, githubClient *github.Client, githubToken string, db *database.DB) {
+
+	fmt.Printf("Processing DRAFT project ID %d: %s\n", project.ID, project.RepositoryURL)
+
+	execCtx, websiteURL := buildExecutionContext(ctx, project.ID, project.RepositoryURL, githubClient, false)
+	if execCtx == nil {
+		return
+	}
+
+	// Full pipeline: sources + metadata
+	sourceAdapters := buildSourceAdapters(githubClient, githubToken)
+	metadataAdapters := buildMetadataAdapters(githubClient)
+
+	if err := executor.Execute(ctx, execCtx, sourceAdapters, metadataAdapters); err != nil {
+		log.Printf("Failed to execute pipeline: %v\n", err)
+		return
+	}
+
+	// Update website URL if found
+	if websiteURL != "" {
+		_, err := db.Conn.Exec(ctx, "UPDATE categories_software SET website_url = $1 WHERE id = $2", websiteURL, project.ID)
+		if err != nil {
+			log.Printf("Warning: Failed to update website URL: %v\n", err)
+		}
+	}
+
+	fmt.Printf("Draft project ID %d analysis completed successfully\n\n", project.ID)
+}
+
+// processPublishedProject handles published project updates (metrics + scores only)
+func processPublishedProject(ctx context.Context, project *database.ProjectInfo,
+	executor *engine.Executor, githubClient *github.Client, githubToken string, db *database.DB) {
+
+	fmt.Printf("Updating PUBLISHED project ID %d: %s\n", project.ID, project.RepositoryURL)
+
+	execCtx, websiteURL := buildExecutionContext(ctx, project.ID, project.RepositoryURL, githubClient, true)
+	if execCtx == nil {
+		return
+	}
+
+	// Partial pipeline: sources only (no metadata)
+	sourceAdapters := buildSourceAdapters(githubClient, githubToken)
+	metadataAdapters := []engine.MetadataAdapter{} // Empty!
+
+	if err := executor.Execute(ctx, execCtx, sourceAdapters, metadataAdapters); err != nil {
+		log.Printf("Failed to execute pipeline: %v\n", err)
+		return
+	}
+
+	// Update website URL if found
+	if websiteURL != "" {
+		_, err := db.Conn.Exec(ctx, "UPDATE categories_software SET website_url = $1 WHERE id = $2", websiteURL, project.ID)
+		if err != nil {
+			log.Printf("Warning: Failed to update website URL: %v\n", err)
+		}
+	}
+
+	fmt.Printf("Published project ID %d update completed successfully\n\n", project.ID)
 }
 
 func analyze(project string) {

@@ -6,6 +6,7 @@ type Config struct {
 	Scores   []ScoreDefinition  `toml:"scores"`
 	Metadata []MetadataOp       `toml:"metadata"`
 	Output   OutputConfig       `toml:"output"`
+	WorkMode WorkModeConfig     `toml:"work_mode"`
 }
 
 // MetricDefinition defines a metric collection operation
@@ -41,4 +42,12 @@ type OutputConfig struct {
 	ScoreTable          string            `toml:"score_table"`
 	ScoreMetadata       map[string]bool   `toml:"score_metadata"`
 	UpdateSoftwareState string            `toml:"update_software_state"`
+}
+
+// WorkModeConfig controls work mode behavior for published project updates
+type WorkModeConfig struct {
+	EnablePublishedUpdates      bool `toml:"enable_published_updates"`
+	PublishedUpdateIntervalHours int  `toml:"published_update_interval_hours"`
+	PublishedBatchSize          int  `toml:"published_batch_size"`
+	IdleSleepSeconds            int  `toml:"idle_sleep_seconds"`
 }

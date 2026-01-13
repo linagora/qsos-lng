@@ -22,12 +22,13 @@ type Executor struct {
 
 // ExecutionContext holds context for a single execution run
 type ExecutionContext struct {
-	SoftwareID    int64
-	Owner         string
-	Repo          string
-	RepositoryURL string
-	IsMirror      bool
-	Language      string
+	SoftwareID        int64
+	Owner             string
+	Repo              string
+	RepositoryURL     string
+	IsMirror          bool
+	Language          string
+	IsPublishedUpdate bool // true for published project updates (skip metadata, preserve state)
 }
 
 // NewExecutor creates a new execution engine

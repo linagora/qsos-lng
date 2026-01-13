@@ -125,3 +125,71 @@ func (db *DB) UpdateSoftwareFields(ctx context.Context, softwareID int64, fields
 
 	return nil
 }
+
+// ProjectInfo represents basic project information
+type ProjectInfo struct {
+	ID            int64
+	RepositoryURL string
+}
+
+// GetNextDraftProject retrieves the oldest draft project
+func (db *DB) GetNextDraftProject(ctx context.Context) (*ProjectInfo, error) {
+	var project ProjectInfo
+
+	err := db.Conn.QueryRow(ctx, `
+		SELECT id, repository_url
+		FROM categories_software
+		WHERE state = 'draft'
+		ORDER BY created_at ASC
+		LIMIT 1
+	`).Scan(&project.ID, &project.RepositoryURL)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &project, nil
+}
+
+// GetNextPublishedProjectToUpdate retrieves published projects that need updating
+func (db *DB) GetNextPublishedProjectToUpdate(ctx context.Context, intervalHours int, limit int) ([]ProjectInfo, error) {
+	rows, err := db.Conn.Query(ctx, `
+		SELECT id, repository_url
+		FROM categories_software
+		WHERE state = 'published'
+		  AND (last_metrics_update_at IS NULL OR last_metrics_update_at < NOW() - INTERVAL '1 hour' * $1)
+		ORDER BY COALESCE(last_metrics_update_at, '1970-01-01'::timestamp) ASC
+		LIMIT $2
+	`, intervalHours, limit)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var projects []ProjectInfo
+	for rows.Next() {
+		var project ProjectInfo
+		if err := rows.Scan(&project.ID, &project.RepositoryURL); err != nil {
+			return nil, err
+		}
+		projects = append(projects, project)
+	}
+
+	return projects, rows.Err()
+}
+
+// UpdateLastMetricsUpdateTime updates the last_metrics_update_at timestamp
+func (db *DB) UpdateLastMetricsUpdateTime(ctx context.Context, softwareID int64) error {
+	_, err := db.Conn.Exec(ctx, `
+		UPDATE categories_software
+		SET last_metrics_update_at = NOW()
+		WHERE id = $1
+	`, softwareID)
+
+	if err != nil {
+		return fmt.Errorf("failed to update last_metrics_update_at: %w", err)
+	}
+
+	return nil
+}

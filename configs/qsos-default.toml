@@ -164,3 +164,20 @@ update_software_state = "in_review"
 [output.score_metadata]
 is_published = true
 is_manual = false
+
+# ============================================================================
+# WORK MODE CONFIGURATION
+# ============================================================================
+
+[work_mode]
+# Enable automatic updates for published projects during idle time
+enable_published_updates = true
+
+# How often to update each published project (in hours)
+published_update_interval_hours = 24
+
+# Number of published projects to update per idle cycle
+published_batch_size = 1
+
+# Sleep duration when no work is available (in seconds)
+idle_sleep_seconds = 3
