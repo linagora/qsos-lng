@@ -117,19 +117,36 @@ formula = "compute_score(metric.test_ratio, [0.1, 0.4, 0.8, 1.6], 'bigger_is_bet
 # Security Category
 
 [[scores]]
-slug = "scorecard"
-formula = """
-  1 + weighted_avg([
-    metric.scorecard_vulnerabilities * 3,
-    metric.scorecard_security_policy * 2,
-    metric.scorecard_binary_artifacts * 3,
-    metric.scorecard_branch_protection * 3,
-    if(metric.is_mirror == 1, 0, metric.scorecard_code_review * 3),
-    metric.scorecard_pinned_dependencies * 2,
-    metric.scorecard_packaging * 2,
-    metric.scorecard_signed_releases * 3
-  ], if(metric.is_mirror == 1, 18, 21)) / 2
-"""
+slug = "vulnerabilities"
+formula = "1 + metric.scorecard_vulnerabilities / 2.5"
+
+[[scores]]
+slug = "security-policy"
+formula = "1 + metric.scorecard_security_policy / 2.5"
+
+[[scores]]
+slug = "binary-artifacts"
+formula = "1 + metric.scorecard_binary_artifacts / 2.5"
+
+[[scores]]
+slug = "branch-protection"
+formula = "1 + metric.scorecard_branch_protection / 2.5"
+
+[[scores]]
+slug = "code-review"
+formula = "if(metric.is_mirror == 1, 5, 1 + metric.scorecard_code_review / 2.5)"
+
+[[scores]]
+slug = "pinned-dependencies"
+formula = "1 + metric.scorecard_pinned_dependencies / 2.5"
+
+[[scores]]
+slug = "packaging"
+formula = "1 + metric.scorecard_packaging / 2.5"
+
+[[scores]]
+slug = "signed-releases"
+formula = "1 + metric.scorecard_signed_releases / 2.5"
 
 # ============================================================================
 # METADATA OPERATIONS

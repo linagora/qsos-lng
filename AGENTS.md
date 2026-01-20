@@ -184,7 +184,7 @@ formula = """
 
 **Community:** `maturity`, `activity`, `popularity`, `contributors`, `documentation`
 **Tech:** `size`, `complexity`, `tests`
-**Security:** `scorecard`
+**Security:** `vulnerabilities`, `security-policy`, `binary-artifacts`, `branch-protection`, `code-review`, `pinned-dependencies`, `packaging`, `signed-releases`
 
 ## How to Customize
 
