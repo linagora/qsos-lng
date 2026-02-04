@@ -198,3 +198,6 @@ published_batch_size = 1
 
 # Sleep duration when no work is available (in seconds)
 idle_sleep_seconds = 3
+
+# Timeout for Docker commands like Lizard and Scorecard (in minutes)
+docker_timeout_minutes = 120

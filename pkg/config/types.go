@@ -46,8 +46,9 @@ type OutputConfig struct {
 
 // WorkModeConfig controls work mode behavior for published project updates
 type WorkModeConfig struct {
-	EnablePublishedUpdates      bool `toml:"enable_published_updates"`
+	EnablePublishedUpdates       bool `toml:"enable_published_updates"`
 	PublishedUpdateIntervalHours int  `toml:"published_update_interval_hours"`
-	PublishedBatchSize          int  `toml:"published_batch_size"`
-	IdleSleepSeconds            int  `toml:"idle_sleep_seconds"`
+	PublishedBatchSize           int  `toml:"published_batch_size"`
+	IdleSleepSeconds             int  `toml:"idle_sleep_seconds"`
+	DockerTimeoutMinutes         int  `toml:"docker_timeout_minutes"`
 }

@@ -104,11 +104,13 @@ func work() {
 	// Create execution engine
 	executor := engine.NewExecutor(cfg, db, store, lookup, fieldMap, githubClient, githubToken)
 
+	dockerTimeout := cfg.WorkMode.DockerTimeoutMinutes
+
 	for {
 		// Priority 1: Draft projects (immediate processing)
 		project, err := db.GetNextDraftProject(ctx)
 		if err == nil {
-			processDraftProject(ctx, project, executor, githubClient, githubToken, db)
+			processDraftProject(ctx, project, executor, githubClient, githubToken, db, dockerTimeout)
 			continue
 		}
 
@@ -126,7 +128,7 @@ func work() {
 				log.Printf("Failed to query published projects: %v", err)
 			} else if len(projects) > 0 {
 				for _, proj := range projects {
-					processPublishedProject(ctx, &proj, executor, githubClient, githubToken, db)
+					processPublishedProject(ctx, &proj, executor, githubClient, githubToken, db, dockerTimeout)
 				}
 				continue
 			}
@@ -190,11 +192,11 @@ func buildExecutionContext(ctx context.Context, projectID int64, repositoryURL s
 }
 
 // buildSourceAdapters creates all source adapters
-func buildSourceAdapters(githubClient *github.Client, githubToken string) []engine.SourceAdapter {
+func buildSourceAdapters(githubClient *github.Client, githubToken string, dockerTimeoutMinutes int) []engine.SourceAdapter {
 	return []engine.SourceAdapter{
 		sources.NewGitHubSource(githubClient),
-		sources.NewLizardSource(),
-		sources.NewScorecardSource(githubToken),
+		sources.NewLizardSource(dockerTimeoutMinutes),
+		sources.NewScorecardSource(githubToken, dockerTimeoutMinutes),
 		sources.NewDocumentationSource(githubClient),
 	}
 }
@@ -210,21 +212,29 @@ func buildMetadataAdapters(githubClient *github.Client) []engine.MetadataAdapter
 
 // processDraftProject handles draft project analysis with full pipeline
 func processDraftProject(ctx context.Context, project *database.ProjectInfo,
-	executor *engine.Executor, githubClient *github.Client, githubToken string, db *database.DB) {
+	executor *engine.Executor, githubClient *github.Client, githubToken string, db *database.DB, dockerTimeoutMinutes int) {
 
 	fmt.Printf("Processing DRAFT project ID %d: %s\n", project.ID, project.RepositoryURL)
 
 	execCtx, websiteURL := buildExecutionContext(ctx, project.ID, project.RepositoryURL, githubClient, false)
 	if execCtx == nil {
+		log.Printf("Failed to build execution context, setting project to error state\n")
+		if err := db.UpdateSoftwareState(ctx, project.ID, "error"); err != nil {
+			log.Printf("Failed to update software state to error: %v\n", err)
+		}
 		return
 	}
 
 	// Full pipeline: sources + metadata
-	sourceAdapters := buildSourceAdapters(githubClient, githubToken)
+	sourceAdapters := buildSourceAdapters(githubClient, githubToken, dockerTimeoutMinutes)
 	metadataAdapters := buildMetadataAdapters(githubClient)
 
 	if err := executor.Execute(ctx, execCtx, sourceAdapters, metadataAdapters); err != nil {
 		log.Printf("Failed to execute pipeline: %v\n", err)
+		log.Printf("Setting project to error state\n")
+		if err := db.UpdateSoftwareState(ctx, project.ID, "error"); err != nil {
+			log.Printf("Failed to update software state to error: %v\n", err)
+		}
 		return
 	}
 
@@ -241,7 +251,7 @@ func processDraftProject(ctx context.Context, project *database.ProjectInfo,
 
 // processPublishedProject handles published project updates (metrics + scores only)
 func processPublishedProject(ctx context.Context, project *database.ProjectInfo,
-	executor *engine.Executor, githubClient *github.Client, githubToken string, db *database.DB) {
+	executor *engine.Executor, githubClient *github.Client, githubToken string, db *database.DB, dockerTimeoutMinutes int) {
 
 	fmt.Printf("Updating PUBLISHED project ID %d: %s\n", project.ID, project.RepositoryURL)
 
@@ -251,7 +261,7 @@ func processPublishedProject(ctx context.Context, project *database.ProjectInfo,
 	}
 
 	// Partial pipeline: sources only (no metadata)
-	sourceAdapters := buildSourceAdapters(githubClient, githubToken)
+	sourceAdapters := buildSourceAdapters(githubClient, githubToken, dockerTimeoutMinutes)
 	metadataAdapters := []engine.MetadataAdapter{} // Empty!
 
 	if err := executor.Execute(ctx, execCtx, sourceAdapters, metadataAdapters); err != nil {
@@ -325,11 +335,12 @@ func analyze(project string) {
 		Language:      language,
 	}
 
-	// Create source adapters
+	// Create source adapters (use config timeout for analyze mode too)
+	dockerTimeout := cfg.WorkMode.DockerTimeoutMinutes
 	sourceAdapters := []engine.SourceAdapter{
 		sources.NewGitHubSource(githubClient),
-		sources.NewLizardSource(),
-		sources.NewScorecardSource(githubToken),
+		sources.NewLizardSource(dockerTimeout),
+		sources.NewScorecardSource(githubToken, dockerTimeout),
 		sources.NewDocumentationSource(githubClient),
 	}
 

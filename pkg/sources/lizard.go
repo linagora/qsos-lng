@@ -10,16 +10,21 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/linagora/qsos-lng/pkg/engine"
 )
 
 // LizardSource fetches metrics using Lizard code analysis
-type LizardSource struct{}
+type LizardSource struct {
+	dockerTimeout time.Duration
+}
 
 // NewLizardSource creates a new Lizard source adapter
-func NewLizardSource() *LizardSource {
-	return &LizardSource{}
+func NewLizardSource(dockerTimeoutMinutes int) *LizardSource {
+	return &LizardSource{
+		dockerTimeout: time.Duration(dockerTimeoutMinutes) * time.Minute,
+	}
 }
 
 // Name returns the source name
@@ -44,8 +49,11 @@ func (s *LizardSource) Fetch(ctx context.Context, execCtx *engine.ExecutionConte
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
 
-	// Run Lizard analysis
-	cmd = exec.CommandContext(ctx,
+	// Run Lizard analysis with timeout
+	dockerCtx, cancel := context.WithTimeout(ctx, s.dockerTimeout)
+	defer cancel()
+
+	cmd = exec.CommandContext(dockerCtx,
 		"docker", "run", "--rm",
 		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		"-e", "HOME=/tmp",

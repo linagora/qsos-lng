@@ -7,18 +7,23 @@ import (
 	"log"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/linagora/qsos-lng/pkg/engine"
 )
 
 // ScorecardSource fetches security metrics from OpenSSF Scorecard
 type ScorecardSource struct {
-	githubToken string
+	githubToken   string
+	dockerTimeout time.Duration
 }
 
 // NewScorecardSource creates a new Scorecard source adapter
-func NewScorecardSource(githubToken string) *ScorecardSource {
-	return &ScorecardSource{githubToken: githubToken}
+func NewScorecardSource(githubToken string, dockerTimeoutMinutes int) *ScorecardSource {
+	return &ScorecardSource{
+		githubToken:   githubToken,
+		dockerTimeout: time.Duration(dockerTimeoutMinutes) * time.Minute,
+	}
 }
 
 // Name returns the source name
@@ -36,7 +41,10 @@ type scorecardResult struct {
 
 // Fetch retrieves all Scorecard metrics
 func (s *ScorecardSource) Fetch(ctx context.Context, execCtx *engine.ExecutionContext) ([]engine.MetricResult, error) {
-	cmd := exec.CommandContext(ctx,
+	dockerCtx, cancel := context.WithTimeout(ctx, s.dockerTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(dockerCtx,
 		"docker", "run", "--rm", "--net=host",
 		"-e", fmt.Sprintf("GITHUB_AUTH_TOKEN=%s", s.githubToken),
 		"gcr.io/openssf/scorecard:stable",
