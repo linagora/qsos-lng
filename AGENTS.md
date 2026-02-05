@@ -101,9 +101,14 @@ formula = """
 - Contributors: Active in last 6 months, >3 commits, no bots
 
 **Lizard** (`pkg/sources/lizard.go`):
-- Runs Docker container with Lizard analysis
-- Metrics: lines_of_code, test_lines_of_code, test_ratio, complexity (%), high_complexity_functions, functions
-- Separates production and test code
+- Uses **Tokei** (fast Rust tool) for line counting, **Lizard** for complexity analysis
+- Pipeline: Tokei → Filter → Select → Lizard
+  1. Tokei counts lines per file (all files)
+  2. Filters out non-essential directories (vendor/, third_party/, .github/, docs/, scripts/, etc.)
+  3. Selects 10000 largest files for complexity analysis
+  4. Lizard analyzes only selected files
+- Metrics: lines_of_code, test_lines_of_code, test_ratio (from Tokei), complexity (%), high_complexity_functions, functions (from Lizard)
+- Falls back to Lizard-only if Tokei fails
 
 **Scorecard** (`pkg/sources/scorecard.go`):
 - Runs OpenSSF Scorecard via Docker

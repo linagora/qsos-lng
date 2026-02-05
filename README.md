@@ -6,7 +6,7 @@ QSOS::LNG analyzes Open-Source projects by collecting and scoring metrics from
 multiple sources:
 
 - **GitHub API**: Repository metadata, commit history, stars, and contributor activity
-- **Lizard**: Code quality metrics (lines of code, cyclomatic complexity)
+- **Tokei + Lizard**: Code quality metrics (Tokei for fast line counting, Lizard for cyclomatic complexity)
 - **OpenSSF Scorecard**: Security best practices and vulnerability checks
 
 The tool computes normalized scores across three main categories:
