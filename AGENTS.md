@@ -105,7 +105,7 @@ formula = """
 - Pipeline: Tokei → Filter → Select → Lizard
   1. Tokei counts lines per file (all files)
   2. Filters out non-essential directories (vendor/, third_party/, .github/, docs/, scripts/, etc.)
-  3. Selects 10000 largest files for complexity analysis
+  3. Selects 2000 largest files for complexity analysis
   4. Lizard analyzes only selected files
 - Metrics: lines_of_code, test_lines_of_code, test_ratio (from Tokei), complexity (%), high_complexity_functions, functions (from Lizard)
 - Falls back to Lizard-only if Tokei fails
