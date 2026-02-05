@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/go-github/v76/github"
+	"github.com/linagora/qsos-lng/pkg/ratelimit"
 )
 
 // GetIconURL returns an icon URL for the given project, falling back to devicons if needed
@@ -26,15 +27,23 @@ func GetIconURL(ctx context.Context, githubClient *github.Client, owner, repo st
 // getSimpleIcon tries to find an icon from simple-icons
 func getSimpleIcon(ctx context.Context, githubClient *github.Client, projectName string) (string, error) {
 	// Get slugs.md content from simple-icons repository
-	fileContent, _, _, err := githubClient.Repositories.GetContents(
-		ctx,
-		"simple-icons",
-		"simple-icons",
-		"slugs.md",
-		&github.RepositoryContentGetOptions{},
-	)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch simple-icons slugs: %w", err)
+	var fileContent *github.RepositoryContent
+	for {
+		var err error
+		fileContent, _, _, err = githubClient.Repositories.GetContents(
+			ctx,
+			"simple-icons",
+			"simple-icons",
+			"slugs.md",
+			&github.RepositoryContentGetOptions{},
+		)
+		if err != nil {
+			if ratelimit.HandleGitHub(err) {
+				continue
+			}
+			return "", fmt.Errorf("failed to fetch simple-icons slugs: %w", err)
+		}
+		break
 	}
 
 	if fileContent == nil || fileContent.Content == nil {
@@ -72,15 +81,23 @@ func getSimpleIcon(ctx context.Context, githubClient *github.Client, projectName
 // getDevicon tries to find an icon from devicons
 func getDevicon(ctx context.Context, githubClient *github.Client, projectName string, language string) (string, error) {
 	// Get list of icon directories from devicons repository
-	_, dirContents, _, err := githubClient.Repositories.GetContents(
-		ctx,
-		"devicons",
-		"devicon",
-		"icons",
-		&github.RepositoryContentGetOptions{},
-	)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch devicons list: %w", err)
+	var dirContents []*github.RepositoryContent
+	for {
+		var err error
+		_, dirContents, _, err = githubClient.Repositories.GetContents(
+			ctx,
+			"devicons",
+			"devicon",
+			"icons",
+			&github.RepositoryContentGetOptions{},
+		)
+		if err != nil {
+			if ratelimit.HandleGitHub(err) {
+				continue
+			}
+			return "", fmt.Errorf("failed to fetch devicons list: %w", err)
+		}
+		break
 	}
 
 	projectNameNormalized := normalizeProjectName(projectName)

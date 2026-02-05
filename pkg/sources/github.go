@@ -31,9 +31,17 @@ func (s *GitHubSource) Fetch(ctx context.Context, execCtx *engine.ExecutionConte
 	results := make([]engine.MetricResult, 0)
 
 	// 1. Get repository info (stars, language, mirror status)
-	repository, _, err := s.client.Repositories.Get(ctx, execCtx.Owner, execCtx.Repo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get repository info: %w", err)
+	var repository *github.Repository
+	for {
+		var err error
+		repository, _, err = s.client.Repositories.Get(ctx, execCtx.Owner, execCtx.Repo)
+		if err != nil {
+			if handleRateLimit(err) {
+				continue
+			}
+			return nil, fmt.Errorf("failed to get repository info: %w", err)
+		}
+		break
 	}
 
 	if repository.StargazersCount != nil {
@@ -60,12 +68,20 @@ func (s *GitHubSource) Fetch(ctx context.Context, execCtx *engine.ExecutionConte
 	defaultBranch := repository.GetDefaultBranch()
 
 	// 2. Get last commit date
-	lastCommits, _, err := s.client.Repositories.ListCommits(ctx, execCtx.Owner, execCtx.Repo, &github.CommitsListOptions{
-		SHA:         defaultBranch,
-		ListOptions: github.ListOptions{PerPage: 1},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get last commit: %w", err)
+	var lastCommits []*github.RepositoryCommit
+	for {
+		var err error
+		lastCommits, _, err = s.client.Repositories.ListCommits(ctx, execCtx.Owner, execCtx.Repo, &github.CommitsListOptions{
+			SHA:         defaultBranch,
+			ListOptions: github.ListOptions{PerPage: 1},
+		})
+		if err != nil {
+			if handleRateLimit(err) {
+				continue
+			}
+			return nil, fmt.Errorf("failed to get last commit: %w", err)
+		}
+		break
 	}
 
 	var lastCommitDate time.Time
@@ -84,21 +100,36 @@ func (s *GitHubSource) Fetch(ctx context.Context, execCtx *engine.ExecutionConte
 	})
 
 	// 3. Get first commit date (by fetching the last page)
-	_, resp, err := s.client.Repositories.ListCommits(ctx, execCtx.Owner, execCtx.Repo, &github.CommitsListOptions{
-		SHA:         defaultBranch,
-		ListOptions: github.ListOptions{PerPage: 1},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get commit page count: %w", err)
+	var firstCommitPage int
+	for {
+		_, resp, err := s.client.Repositories.ListCommits(ctx, execCtx.Owner, execCtx.Repo, &github.CommitsListOptions{
+			SHA:         defaultBranch,
+			ListOptions: github.ListOptions{PerPage: 1},
+		})
+		if err != nil {
+			if handleRateLimit(err) {
+				continue
+			}
+			return nil, fmt.Errorf("failed to get commit page count: %w", err)
+		}
+		firstCommitPage = resp.LastPage
+		break
 	}
 
-	firstCommitPage := resp.LastPage
-	firstCommits, _, err := s.client.Repositories.ListCommits(ctx, execCtx.Owner, execCtx.Repo, &github.CommitsListOptions{
-		SHA:         defaultBranch,
-		ListOptions: github.ListOptions{PerPage: 1, Page: firstCommitPage},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get first commit: %w", err)
+	var firstCommits []*github.RepositoryCommit
+	for {
+		var err error
+		firstCommits, _, err = s.client.Repositories.ListCommits(ctx, execCtx.Owner, execCtx.Repo, &github.CommitsListOptions{
+			SHA:         defaultBranch,
+			ListOptions: github.ListOptions{PerPage: 1, Page: firstCommitPage},
+		})
+		if err != nil {
+			if handleRateLimit(err) {
+				continue
+			}
+			return nil, fmt.Errorf("failed to get first commit: %w", err)
+		}
+		break
 	}
 
 	var firstCommitDate time.Time
@@ -131,6 +162,9 @@ func (s *GitHubSource) Fetch(ctx context.Context, execCtx *engine.ExecutionConte
 	for {
 		commits, resp, err := s.client.Repositories.ListCommits(ctx, execCtx.Owner, execCtx.Repo, opts)
 		if err != nil {
+			if handleRateLimit(err) {
+				continue // Retry the same page after rate limit sleep
+			}
 			return nil, fmt.Errorf("failed to list commits for contributors: %w", err)
 		}
 

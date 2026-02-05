@@ -34,13 +34,23 @@ func (s *DocumentationSource) Fetch(ctx context.Context, execCtx *engine.Executi
 	var keySectionsCount int64
 
 	// 1. Fetch README and analyze it
-	readme, _, err := s.client.Repositories.GetReadme(ctx, execCtx.Owner, execCtx.Repo, nil)
-	if err == nil && readme.Content != nil {
-		content, err := readme.GetContent()
-		if err == nil {
-			readmeLength = int64(len(strings.Fields(content)))
-			keySectionsCount = countKeySections(content)
+	for {
+		readme, _, err := s.client.Repositories.GetReadme(ctx, execCtx.Owner, execCtx.Repo, nil)
+		if err != nil {
+			if handleRateLimit(err) {
+				continue
+			}
+			// README not found is not fatal, just continue with zero values
+			break
 		}
+		if readme.Content != nil {
+			content, err := readme.GetContent()
+			if err == nil {
+				readmeLength = int64(len(strings.Fields(content)))
+				keySectionsCount = countKeySections(content)
+			}
+		}
+		break
 	}
 
 	// Calculate README quality score (0-100)
@@ -60,9 +70,22 @@ func (s *DocumentationSource) Fetch(ctx context.Context, execCtx *engine.Executi
 	// 2. Check for docs directory and count files
 	var hasDocsDirectory bool
 	var docsFileCount int64
+	var rootContent []*github.RepositoryContent
 
-	_, rootContent, _, err := s.client.Repositories.GetContents(ctx, execCtx.Owner, execCtx.Repo, "", nil)
-	if err == nil && rootContent != nil {
+	for {
+		var err error
+		_, rootContent, _, err = s.client.Repositories.GetContents(ctx, execCtx.Owner, execCtx.Repo, "", nil)
+		if err != nil {
+			if handleRateLimit(err) {
+				continue
+			}
+			// Root content not accessible, continue with defaults
+			break
+		}
+		break
+	}
+
+	if rootContent != nil {
 		readmePattern := regexp.MustCompile(`(?i)^readme\.([a-z]{2})\.md$`)
 		multiLanguageCount := int64(0)
 
@@ -75,10 +98,19 @@ func (s *DocumentationSource) Fetch(ctx context.Context, execCtx *engine.Executi
 			if !hasDocsDirectory && file.Type != nil && *file.Type == "dir" {
 				nameLower := strings.ToLower(*file.Name)
 				if nameLower == "docs" || nameLower == "doc" {
-					_, dirContent, _, err := s.client.Repositories.GetContents(ctx, execCtx.Owner, execCtx.Repo, *file.Name, nil)
-					if err == nil && dirContent != nil {
-						hasDocsDirectory = true
-						docsFileCount = int64(len(dirContent))
+					for {
+						_, dirContent, _, err := s.client.Repositories.GetContents(ctx, execCtx.Owner, execCtx.Repo, *file.Name, nil)
+						if err != nil {
+							if handleRateLimit(err) {
+								continue
+							}
+							break
+						}
+						if dirContent != nil {
+							hasDocsDirectory = true
+							docsFileCount = int64(len(dirContent))
+						}
+						break
 					}
 				}
 			}
@@ -109,20 +141,44 @@ func (s *DocumentationSource) Fetch(ctx context.Context, execCtx *engine.Executi
 	var hasContributing bool
 	var hasIssueTemplates bool
 
-	_, _, _, err = s.client.Repositories.GetContents(ctx, execCtx.Owner, execCtx.Repo, "CONTRIBUTING.md", nil)
-	if err == nil {
+	for {
+		_, _, _, err := s.client.Repositories.GetContents(ctx, execCtx.Owner, execCtx.Repo, "CONTRIBUTING.md", nil)
+		if err != nil {
+			if handleRateLimit(err) {
+				continue
+			}
+			// File not found, try alternate location
+			break
+		}
 		hasContributing = true
+		break
 	}
 	if !hasContributing {
-		_, _, _, err = s.client.Repositories.GetContents(ctx, execCtx.Owner, execCtx.Repo, ".github/CONTRIBUTING.md", nil)
-		if err == nil {
+		for {
+			_, _, _, err := s.client.Repositories.GetContents(ctx, execCtx.Owner, execCtx.Repo, ".github/CONTRIBUTING.md", nil)
+			if err != nil {
+				if handleRateLimit(err) {
+					continue
+				}
+				break
+			}
 			hasContributing = true
+			break
 		}
 	}
 
-	_, issueTemplates, _, err := s.client.Repositories.GetContents(ctx, execCtx.Owner, execCtx.Repo, ".github/ISSUE_TEMPLATE", nil)
-	if err == nil && issueTemplates != nil && len(issueTemplates) > 0 {
-		hasIssueTemplates = true
+	for {
+		_, issueTemplates, _, err := s.client.Repositories.GetContents(ctx, execCtx.Owner, execCtx.Repo, ".github/ISSUE_TEMPLATE", nil)
+		if err != nil {
+			if handleRateLimit(err) {
+				continue
+			}
+			break
+		}
+		if issueTemplates != nil && len(issueTemplates) > 0 {
+			hasIssueTemplates = true
+		}
+		break
 	}
 
 	// Calculate accessibility score (0-100)
