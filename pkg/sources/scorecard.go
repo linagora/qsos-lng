@@ -54,6 +54,10 @@ func (s *ScorecardSource) Fetch(ctx context.Context, execCtx *engine.ExecutionCo
 
 	output, err := cmd.Output()
 	if err != nil {
+		// Include stderr in error message for debugging
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("failed to run scorecard: %w\nstderr: %s", err, string(exitErr.Stderr))
+		}
 		return nil, fmt.Errorf("failed to run scorecard: %w", err)
 	}
 
