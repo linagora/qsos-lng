@@ -51,7 +51,7 @@ type LizardSource struct {
 func NewLizardSource(dockerTimeoutMinutes int) *LizardSource {
 	return &LizardSource{
 		dockerTimeout:       time.Duration(dockerTimeoutMinutes) * time.Minute,
-		maxFilesForAnalysis: 2000,
+		maxFilesForAnalysis: 1000,
 	}
 }
 
