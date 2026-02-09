@@ -7,6 +7,7 @@ QSOS::LNG analyzes open-source projects using a **TOML-based configuration syste
 **Modes:**
 - `go run . analyze <owner/repo>` - One-shot analysis showing raw metrics
 - `go run . work` - Background worker processing draft projects from PostgreSQL (shared with Django Argus du Libre)
+- `go run . retag` - Regenerate AI tags on all published GitHub projects
 
 **Environment Variables:**
 - Required: `GITHUB_TOKEN`, `AI_API_KEY`

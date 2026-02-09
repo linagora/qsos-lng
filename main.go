@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/go-github/v76/github"
 	"github.com/jackc/pgx/v5"
+	"github.com/linagora/qsos-lng/metadata"
 	"github.com/linagora/qsos-lng/pkg/config"
 	"github.com/linagora/qsos-lng/pkg/database"
 	"github.com/linagora/qsos-lng/pkg/engine"
@@ -22,6 +23,7 @@ func usage() {
 	log.Fatalf(`Usage:
 - go run . analyze <owner/repo> for one-shot analysis of a project
 - go run . work for working in background for l'Argus du Libre.
+- go run . retag for regenerating tags on all published projects.
 `)
 }
 
@@ -38,6 +40,8 @@ func main() {
 			usage()
 		}
 		analyze(os.Args[2])
+	case "retag":
+		retag()
 	default:
 		usage()
 	}
@@ -391,6 +395,114 @@ func analyze(project string) {
 	}
 
 	fmt.Printf("\nAnalysis complete!\n")
+}
+
+func retag() {
+	ctx := context.Background()
+
+	// Setup credentials
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	if githubToken == "" {
+		log.Fatalf("GITHUB_TOKEN environment variable is not set")
+	}
+	githubClient := github.NewClient(nil).WithAuthToken(githubToken)
+
+	// Connect to the database
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		log.Fatalf("DATABASE_URL environment variable is not set")
+	}
+
+	db, err := database.NewDB(ctx, databaseURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close(ctx)
+
+	// Query all published projects
+	rows, err := db.Conn.Query(ctx, `
+		SELECT id, repository_url
+		FROM categories_software
+		WHERE state = 'published' AND repository_url LIKE 'https://github.com/%'
+		ORDER BY id
+	`)
+	if err != nil {
+		log.Fatalf("Failed to query projects: %v", err)
+	}
+	defer rows.Close()
+
+	var projects []database.ProjectInfo
+	for rows.Next() {
+		var p database.ProjectInfo
+		if err := rows.Scan(&p.ID, &p.RepositoryURL); err != nil {
+			log.Fatalf("Failed to scan project: %v", err)
+		}
+		projects = append(projects, p)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("Error iterating projects: %v", err)
+	}
+
+	fmt.Printf("Found %d published projects to retag\n\n", len(projects))
+
+	for i, project := range projects {
+		// Parse repository URL
+		parsedURL, err := url.Parse(project.RepositoryURL)
+		if err != nil {
+			log.Printf("[%d/%d] ID %d: Failed to parse URL '%s': %v\n", i+1, len(projects), project.ID, project.RepositoryURL, err)
+			continue
+		}
+
+		parts := strings.Split(strings.TrimPrefix(parsedURL.Path, "/"), "/")
+		if len(parts) < 2 {
+			log.Printf("[%d/%d] ID %d: Invalid URL format '%s'\n", i+1, len(projects), project.ID, project.RepositoryURL)
+			continue
+		}
+
+		owner := parts[0]
+		repo := strings.TrimSuffix(parts[1], ".git")
+
+		fmt.Printf("[%d/%d] ID %d: %s/%s\n", i+1, len(projects), project.ID, owner, repo)
+
+		// Generate new tags
+		tags, err := metadata.GetTags(ctx, githubClient, db.Conn, owner, repo)
+		if err != nil {
+			log.Printf("  Error generating tags: %v\n", err)
+			continue
+		}
+
+		// Start transaction
+		tx, err := db.Conn.Begin(ctx)
+		if err != nil {
+			log.Printf("  Error starting transaction: %v\n", err)
+			continue
+		}
+
+		// Delete existing tag associations
+		_, err = tx.Exec(ctx, "DELETE FROM categories_software_tags WHERE software_id = $1", project.ID)
+		if err != nil {
+			tx.Rollback(ctx)
+			log.Printf("  Error deleting old tags: %v\n", err)
+			continue
+		}
+
+		// Save new tags
+		if err := metadata.SaveTagsToDB(ctx, tx, project.ID, tags); err != nil {
+			tx.Rollback(ctx)
+			log.Printf("  Error saving tags: %v\n", err)
+			continue
+		}
+
+		// Commit transaction
+		if err := tx.Commit(ctx); err != nil {
+			log.Printf("  Error committing: %v\n", err)
+			continue
+		}
+
+		fmt.Printf("  Tags: %v\n", tags)
+	}
+
+	fmt.Printf("\nRetag complete!\n")
 }
 
 // createInMemoryLookup creates a simple in-memory metric lookup from config
