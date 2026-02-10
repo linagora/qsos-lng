@@ -29,6 +29,7 @@ type ExecutionContext struct {
 	IsMirror          bool
 	Language          string
 	IsPublishedUpdate bool // true for published project updates (skip metadata, preserve state)
+	RepoSizeKB        int  // repository size in KB from GitHub API, used for disk space checks
 }
 
 // NewExecutor creates a new execution engine

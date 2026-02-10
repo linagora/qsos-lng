@@ -184,6 +184,11 @@ func buildExecutionContext(ctx context.Context, projectID int64, repositoryURL s
 		websiteURL = *repository.Homepage
 	}
 
+	repoSizeKB := 0
+	if repository.Size != nil {
+		repoSizeKB = *repository.Size
+	}
+
 	return &engine.ExecutionContext{
 		SoftwareID:        projectID,
 		Owner:             owner,
@@ -192,6 +197,7 @@ func buildExecutionContext(ctx context.Context, projectID int64, repositoryURL s
 		IsMirror:          isMirror,
 		Language:          language,
 		IsPublishedUpdate: isPublishedUpdate,
+		RepoSizeKB:        repoSizeKB,
 	}, websiteURL
 }
 
@@ -328,6 +334,11 @@ func analyze(project string) {
 	fmt.Printf("Language: %s\n", language)
 	fmt.Printf("Is Mirror: %v\n", isMirror)
 
+	repoSizeKB := 0
+	if repository.Size != nil {
+		repoSizeKB = *repository.Size
+	}
+
 	// Create execution context with temporary software_id
 	const tempSoftwareID = 1
 	execCtx := &engine.ExecutionContext{
@@ -337,6 +348,7 @@ func analyze(project string) {
 		RepositoryURL: fmt.Sprintf("https://github.com/%s/%s", owner, repo),
 		IsMirror:      isMirror,
 		Language:      language,
+		RepoSizeKB:    repoSizeKB,
 	}
 
 	// Create source adapters (use config timeout for analyze mode too)

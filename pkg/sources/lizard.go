@@ -13,10 +13,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/linagora/qsos-lng/pkg/engine"
 )
+
+const minFreeSpaceBytes = 1 << 27 // 128 MB
 
 // FileInfo holds information about a source file
 type FileInfo struct {
@@ -60,14 +63,60 @@ func (s *LizardSource) Name() string {
 	return "Lizard"
 }
 
+// cleanStaleTempDirs removes leftover temp dirs from previous runs
+func cleanStaleTempDirs(component string) {
+	pattern := filepath.Join(os.TempDir(), component+"-*")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return
+	}
+	for _, match := range matches {
+		log.Printf("  Cleaning stale temp dir: %s", match)
+		os.RemoveAll(match)
+	}
+}
+
+// availableSpace returns the available bytes on the filesystem containing path
+func availableSpace(path string) (uint64, error) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(path, &stat); err != nil {
+		return 0, err
+	}
+	return stat.Bavail * uint64(stat.Bsize), nil
+}
+
 // Fetch retrieves all Lizard metrics
 func (s *LizardSource) Fetch(ctx context.Context, execCtx *engine.ExecutionContext) ([]engine.MetricResult, error) {
 	component := execCtx.Owner + "-" + execCtx.Repo
+
+	// Clean up leftover temp dirs from previous (possibly killed) runs
+	cleanStaleTempDirs(component)
+
 	tmpDir, err := os.MkdirTemp("", component+"-")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
+
+	// Check available disk space
+	avail, err := availableSpace(tmpDir)
+	if err != nil {
+		log.Printf("  Warning: could not check disk space: %v", err)
+	} else {
+		// Estimate needed space: repo size * 3 for git overhead, or 1 GB minimum
+		neededBytes := uint64(minFreeSpaceBytes)
+		if execCtx.RepoSizeKB > 0 {
+			estimated := uint64(execCtx.RepoSizeKB) * 1024 * 3
+			if estimated > neededBytes {
+				neededBytes = estimated
+			}
+		}
+		if avail < neededBytes {
+			os.RemoveAll(tmpDir)
+			return nil, fmt.Errorf("insufficient disk space: %d MB available, need ~%d MB",
+				avail/(1024*1024), neededBytes/(1024*1024))
+		}
+	}
 
 	// Clone repository
 	cmd := exec.CommandContext(ctx, "git", "clone", "--depth=1",
