@@ -203,25 +203,18 @@ type LizardRecord struct {
 
 // runTokei executes tokei and returns parsed output
 func (s *LizardSource) runTokei(ctx context.Context, dir string) (map[string]TokeiLanguage, error) {
-	dockerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(dockerCtx,
-		"docker", "run", "--rm",
+	stdout, stderr, err := dockerRun(ctx, 2*time.Minute, "tokei",
 		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		"-v", fmt.Sprintf("%s:/src:ro", dir),
 		"ghcr.io/xampprocky/tokei:latest",
 		"--output", "json", "--files", "/src",
 	)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("tokei execution failed: %w (stderr: %s)", err, stderr.String())
+	if err != nil {
+		return nil, fmt.Errorf("tokei execution failed: %w (stderr: %s)", err, string(stderr))
 	}
 
 	var result map[string]TokeiLanguage
-	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+	if err := json.Unmarshal(stdout, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse tokei output: %w", err)
 	}
 
@@ -351,27 +344,20 @@ func (s *LizardSource) runLizardOnFiles(ctx context.Context, dir string, files [
 		return nil, fmt.Errorf("failed to write file list: %w", err)
 	}
 
-	dockerCtx, cancel := context.WithTimeout(ctx, s.dockerTimeout)
-	defer cancel()
-
 	// Use xargs to pass file list to lizard (lizard doesn't support --input-file)
-	cmd := exec.CommandContext(dockerCtx,
-		"docker", "run", "--rm",
+	stdout, stderr, err := dockerRun(ctx, s.dockerTimeout, "lizard",
 		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		"-e", "HOME=/tmp",
 		"-v", fmt.Sprintf("%s:/src", dir),
 		"python:3.13-alpine",
 		"sh", "-c", "pip install lizard --quiet && cat /src/.lizard_files.txt | xargs /tmp/.local/bin/lizard --csv",
 	)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("lizard execution failed: %w (stderr: %s)", err, stderr.String())
+	if err != nil {
+		return nil, fmt.Errorf("lizard execution failed: %w (stderr: %s)", err, string(stderr))
 	}
 
 	// Parse CSV output
-	reader := csv.NewReader(bytes.NewReader(stdout.Bytes()))
+	reader := csv.NewReader(bytes.NewReader(stdout))
 	csvRecords, err := reader.ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse CSV: %w", err)
@@ -405,27 +391,20 @@ func (s *LizardSource) runLizardOnFiles(ctx context.Context, dir string, files [
 
 // fetchWithLizardOnly is the fallback when tokei fails
 func (s *LizardSource) fetchWithLizardOnly(ctx context.Context, tmpDir string) ([]engine.MetricResult, error) {
-	dockerCtx, cancel := context.WithTimeout(ctx, s.dockerTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(dockerCtx,
-		"docker", "run", "--rm",
+	stdout, stderr, err := dockerRun(ctx, s.dockerTimeout, "lizard",
 		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		"-e", "HOME=/tmp",
 		"-v", fmt.Sprintf("%s:/src", tmpDir),
 		"python:3.13-alpine",
 		"sh", "-c", "pip install lizard --quiet && python -m lizard --csv /src",
 	)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		log.Printf("Lizard stderr: %s", stderr.String())
+	if err != nil {
+		log.Printf("Lizard stderr: %s", string(stderr))
 		return nil, fmt.Errorf("failed to run lizard: %w", err)
 	}
 
 	// Parse CSV output
-	reader := csv.NewReader(bytes.NewReader(stdout.Bytes()))
+	reader := csv.NewReader(bytes.NewReader(stdout))
 	records, err := reader.ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse CSV: %w", err)

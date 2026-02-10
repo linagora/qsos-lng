@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -41,28 +40,19 @@ type scorecardResult struct {
 
 // Fetch retrieves all Scorecard metrics
 func (s *ScorecardSource) Fetch(ctx context.Context, execCtx *engine.ExecutionContext) ([]engine.MetricResult, error) {
-	dockerCtx, cancel := context.WithTimeout(ctx, s.dockerTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(dockerCtx,
-		"docker", "run", "--rm", "--net=host",
+	stdout, stderr, err := dockerRun(ctx, s.dockerTimeout, "scorecard",
+		"--net=host",
 		"-e", fmt.Sprintf("GITHUB_AUTH_TOKEN=%s", s.githubToken),
 		"gcr.io/openssf/scorecard:stable",
 		fmt.Sprintf("--repo=https://github.com/%s/%s", execCtx.Owner, execCtx.Repo),
 		"--format=json",
 	)
-
-	output, err := cmd.Output()
 	if err != nil {
-		// Include stderr in error message for debugging
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("failed to run scorecard: %w\nstderr: %s", err, string(exitErr.Stderr))
-		}
-		return nil, fmt.Errorf("failed to run scorecard: %w", err)
+		return nil, fmt.Errorf("failed to run scorecard: %w\nstderr: %s", err, string(stderr))
 	}
 
 	var result scorecardResult
-	if err := json.Unmarshal(output, &result); err != nil {
+	if err := json.Unmarshal(stdout, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse scorecard output: %w", err)
 	}
 
