@@ -103,14 +103,19 @@ func (s *LizardSource) Fetch(ctx context.Context, execCtx *engine.ExecutionConte
 	if err != nil {
 		log.Printf("  Warning: could not check disk space: %v", err)
 	} else {
-		// Estimate needed space: repo size * 3 for git overhead, or 1 GB minimum
+		// Estimate needed space for a shallow clone (--depth=1).
+		// GitHub API reports full repo size (all history/branches), but a
+		// depth=1 clone is typically ~10-20% of that. We use /5 as a
+		// conservative estimate, with a 128 MB minimum.
 		neededBytes := uint64(minFreeSpaceBytes)
 		if execCtx.RepoSizeKB > 0 {
-			estimated := uint64(execCtx.RepoSizeKB) * 1024 * 3
+			estimated := uint64(execCtx.RepoSizeKB) * 1024 / 5
 			if estimated > neededBytes {
 				neededBytes = estimated
 			}
 		}
+		log.Printf("  Disk space: %d MB available, ~%d MB estimated for shallow clone",
+			avail/(1024*1024), neededBytes/(1024*1024))
 		if avail < neededBytes {
 			os.RemoveAll(tmpDir)
 			return nil, fmt.Errorf("insufficient disk space: %d MB available, need ~%d MB",
