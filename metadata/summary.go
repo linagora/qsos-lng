@@ -89,7 +89,12 @@ func GetBilingualSummary(ctx context.Context, client *github.Client, owner, repo
 	}, nil
 }
 
+const maxReadmeChars = 8000
+
 func summarize(ctx context.Context, client *openaigo.Client, content string, locale string) (string, error) {
+	if len(content) > maxReadmeChars {
+		content = content[:maxReadmeChars]
+	}
 	if client.APIKey == "" {
 		return "", errors.New("AI_API_KEY not set")
 	}
@@ -105,7 +110,8 @@ func summarize(ctx context.Context, client *openaigo.Client, content string, loc
 		model = m
 	}
 	request := openaigo.ChatRequest{
-		Model: model,
+		Model:     model,
+		MaxTokens: 512,
 		Messages: []openaigo.Message{
 			{Role: "system", Content: prompt},
 			{Role: "user", Content: content},

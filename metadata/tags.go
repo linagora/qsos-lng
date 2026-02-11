@@ -90,6 +90,9 @@ func GetTags(ctx context.Context, client *github.Client, db DBQuerier, owner, re
 }
 
 func generateTags(ctx context.Context, client *openaigo.Client, content string, existingTags []string) ([]string, error) {
+	if len(content) > maxReadmeChars {
+		content = content[:maxReadmeChars]
+	}
 	if client.APIKey == "" {
 		return nil, errors.New("AI_API_KEY not set")
 	}
@@ -108,7 +111,8 @@ func generateTags(ctx context.Context, client *openaigo.Client, content string, 
 		model = m
 	}
 	request := openaigo.ChatRequest{
-		Model: model,
+		Model:     model,
+		MaxTokens: 256,
 		Messages: []openaigo.Message{
 			{Role: "system", Content: prompt},
 			{Role: "user", Content: content},
