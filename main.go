@@ -274,9 +274,16 @@ func processPublishedProject(ctx context.Context, project *database.ProjectInfo,
 		return
 	}
 
-	// Partial pipeline: sources only (no metadata)
+	// Partial pipeline: sources + descriptions if missing
 	sourceAdapters := buildSourceAdapters(githubClient, githubToken, dockerTimeoutMinutes)
-	metadataAdapters := []engine.MetadataAdapter{} // Empty!
+	metadataAdapters := []engine.MetadataAdapter{}
+	hasDescriptions, err := db.HasOverviewBlocks(ctx, project.ID)
+	if err != nil {
+		log.Printf("Warning: Failed to check overview blocks: %v\n", err)
+	} else if !hasDescriptions {
+		log.Printf("  No descriptions found, will generate them\n")
+		metadataAdapters = append(metadataAdapters, sources.NewBilingualSummaryAdapter(githubClient))
+	}
 
 	if err := executor.Execute(ctx, execCtx, sourceAdapters, metadataAdapters); err != nil {
 		log.Printf("Failed to execute pipeline: %v\n", err)

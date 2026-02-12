@@ -193,3 +193,16 @@ func (db *DB) UpdateLastMetricsUpdateTime(ctx context.Context, softwareID int64)
 
 	return nil
 }
+
+// HasOverviewBlocks checks whether a software has both FR and EN overview blocks
+func (db *DB) HasOverviewBlocks(ctx context.Context, softwareID int64) (bool, error) {
+	var count int
+	err := db.Conn.QueryRow(ctx, `
+		SELECT COUNT(*) FROM categories_block
+		WHERE software_id = $1 AND kind = 'overview'
+	`, softwareID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("failed to check overview blocks: %w", err)
+	}
+	return count >= 2, nil
+}
