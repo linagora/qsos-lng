@@ -267,6 +267,10 @@ func processPublishedProject(ctx context.Context, project *database.ProjectInfo,
 
 	execCtx, websiteURL := buildExecutionContext(ctx, project.ID, project.RepositoryURL, githubClient, true)
 	if execCtx == nil {
+		// Still update timestamp to avoid retrying immediately in a loop
+		if err := db.UpdateLastMetricsUpdateTime(ctx, project.ID); err != nil {
+			log.Printf("Warning: Failed to update last_metrics_update_at: %v\n", err)
+		}
 		return
 	}
 
@@ -276,6 +280,10 @@ func processPublishedProject(ctx context.Context, project *database.ProjectInfo,
 
 	if err := executor.Execute(ctx, execCtx, sourceAdapters, metadataAdapters); err != nil {
 		log.Printf("Failed to execute pipeline: %v\n", err)
+		// Still update timestamp to avoid retrying immediately in a loop
+		if err := db.UpdateLastMetricsUpdateTime(ctx, project.ID); err != nil {
+			log.Printf("Warning: Failed to update last_metrics_update_at: %v\n", err)
+		}
 		return
 	}
 
