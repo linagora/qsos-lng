@@ -282,10 +282,3 @@ result, err := evaluator.Evaluate(ctx, "compute_score(metric.stars, [100, 1000, 
 ```bash
 go test ./pkg/...
 ```
-
-## Migration Notes
-
-- Legacy packages (`community/`, `tech/`, `security/`) preserved but not used in main pipeline
-- Old `main.go` backed up (can be restored from git if needed)
-- Formula system matches old hardcoded thresholds exactly
-- Database schema unchanged (only adds `categories_metricvalue` usage)
