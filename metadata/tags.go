@@ -112,7 +112,7 @@ func generateTags(ctx context.Context, client *openaigo.Client, content string, 
 	}
 	request := openaigo.ChatRequest{
 		Model:     model,
-		MaxTokens: 256,
+		MaxTokens: 4096,
 		Messages: []openaigo.Message{
 			{Role: "system", Content: prompt},
 			{Role: "user", Content: content},
@@ -129,6 +129,9 @@ func generateTags(ctx context.Context, client *openaigo.Client, content string, 
 	// Parse JSON response
 	var tags []string
 	responseContent := strings.TrimSpace(response.Choices[0].Message.Content)
+	if responseContent == "" {
+		return nil, fmt.Errorf("AI returned empty content (finish_reason: %s)", response.Choices[0].FinishReason)
+	}
 	err = json.Unmarshal([]byte(responseContent), &tags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse tags JSON: %w (response: %s)", err, responseContent)
