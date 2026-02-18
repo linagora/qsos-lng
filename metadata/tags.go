@@ -19,7 +19,7 @@ type DBQuerier interface {
 }
 
 const promptTagsTemplate = `
-You are an agent whose role is to analyze an Open-Source project and generate 3 to 5 relevant tags that describe it.
+You are an agent whose role is to analyze an Open-Source project and generate 2 to 4 relevant tags that describe it.
 Tags should be:
 - Short (1-2 words maximum)
 - Descriptive of the project's domain, technology, or purpose
@@ -31,7 +31,7 @@ Prioritize reusing existing tags when they are relevant. Here is the list of exi
 %s
 
 Return ONLY a valid JSON array of strings, nothing else. Example format:
-["web", "api", "database", "monitoring", "cloud"]
+["metrics", "kubernetes", "firewall", "monitoring"]
 
 Here is the README of the software in question:
 `
