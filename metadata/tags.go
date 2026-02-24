@@ -20,18 +20,23 @@ type DBQuerier interface {
 
 const promptTagsTemplate = `
 You are an agent whose role is to analyze an Open-Source project and generate 2 to 4 relevant tags that describe it.
+
+Return ONLY a valid JSON array of strings, nothing else. Example format:
+["metrics database", "monitoring"]
+
 Tags should be:
-- Short (1-2 words maximum)
+- Short (1-3 words maximum)
 - Descriptive of the project's domain, technology, or purpose
 - Lowercase
 - Generic enough to be reused across similar projects
 - But not too generic (like tool or software)
 
+Tags have 2 purposes:
+- to compare projects that do the same thing, like "container runtime"
+- to explore and search projects, like "kubernetes".
+
 Prioritize reusing existing tags when they are relevant. Here is the list of existing tags in the database:
 %s
-
-Return ONLY a valid JSON array of strings, nothing else. Example format:
-["metrics", "kubernetes", "firewall", "monitoring"]
 
 Here is the README of the software in question:
 `
