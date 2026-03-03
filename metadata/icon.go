@@ -18,12 +18,16 @@ type iconCache struct {
 	mu sync.RWMutex
 
 	// simple-icons: normalized name -> original slug
-	simpleIconsSlugs   map[string]string
-	simpleIconsCached  time.Time
+	simpleIconsSlugs  map[string]string
+	simpleIconsCached time.Time
 
 	// devicons: list of available icon names
-	deviconsNames     []string
-	deviconsCached    time.Time
+	deviconsNames  []string
+	deviconsCached time.Time
+
+	// selfhst-icons: list of available icon names
+	selfhstIconsNames  []string
+	selfhstIconsCached time.Time
 
 	// Cache TTL (24 hours by default)
 	ttl time.Duration
@@ -37,14 +41,100 @@ var cache = &iconCache{
 func GetIconURL(ctx context.Context, githubClient *github.Client, owner, repo string, language string) (string, error) {
 	projectName := strings.ToLower(repo)
 
-	// Try simple-icons first
-	iconURL, err := getSimpleIcon(ctx, githubClient, projectName)
+	// Try selfhst-icons first
+	iconURL, err := getSelfhstIcon(ctx, githubClient, projectName)
+	if err == nil && iconURL != "" {
+		return iconURL, nil
+	}
+
+	// Try simple-icons next
+	iconURL, err = getSimpleIcon(ctx, githubClient, projectName)
 	if err == nil && iconURL != "" {
 		return iconURL, nil
 	}
 
 	// Fallback to devicons
 	return getDevicon(ctx, githubClient, projectName, language)
+}
+
+// getSelfhstIcon tries to find an icon from selfhst/icons
+func getSelfhstIcon(ctx context.Context, githubClient *github.Client, projectName string) (string, error) {
+	icons, err := getSelfhstIconsNames(ctx, githubClient)
+	if err != nil {
+		return "", err
+	}
+
+	projectNameNormalized := normalizeProjectName(projectName)
+
+	// Try exact match first
+	for _, iconName := range icons {
+		// Check for both original and -light/-dark versions
+		if normalizeProjectName(iconName) == projectNameNormalized {
+			return fmt.Sprintf("https://raw.githubusercontent.com/selfhst/icons/main/svg/%s.svg", iconName), nil
+		}
+		if normalizeProjectName(strings.TrimSuffix(iconName, "-light")) == projectNameNormalized {
+			return fmt.Sprintf("https://raw.githubusercontent.com/selfhst/icons/main/svg/%s.svg", iconName), nil
+		}
+		if normalizeProjectName(strings.TrimSuffix(iconName, "-dark")) == projectNameNormalized {
+			return fmt.Sprintf("https://raw.githubusercontent.com/selfhst/icons/main/svg/%s.svg", iconName), nil
+		}
+	}
+
+	return "", fmt.Errorf("no match found in selfhst/icons")
+}
+
+// getSelfhstIconsNames returns cached selfhst-icons names, fetching if needed
+func getSelfhstIconsNames(ctx context.Context, githubClient *github.Client) ([]string, error) {
+	cache.mu.RLock()
+	if cache.selfhstIconsNames != nil && time.Since(cache.selfhstIconsCached) < cache.ttl {
+		defer cache.mu.RUnlock()
+		return cache.selfhstIconsNames, nil
+	}
+	cache.mu.RUnlock()
+
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if cache.selfhstIconsNames != nil && time.Since(cache.selfhstIconsCached) < cache.ttl {
+		return cache.selfhstIconsNames, nil
+	}
+
+	log.Printf("      Fetching selfhst-icons list (cache miss)...\n")
+
+	// Fetch icons directory from selfhst/icons repository
+	var dirContents []*github.RepositoryContent
+	for {
+		var err error
+		_, dirContents, _, err = githubClient.Repositories.GetContents(
+			ctx,
+			"selfhst",
+			"icons",
+			"svg",
+			&github.RepositoryContentGetOptions{},
+		)
+		if err != nil {
+			if ratelimit.HandleGitHub(err) {
+				continue
+			}
+			return nil, fmt.Errorf("failed to fetch selfhst-icons list: %w", err)
+		}
+		break
+	}
+
+	var names []string
+	for _, item := range dirContents {
+		if item.Type != nil && *item.Type == "file" && item.Name != nil {
+			name := strings.TrimSuffix(*item.Name, ".svg")
+			names = append(names, name)
+		}
+	}
+
+	cache.selfhstIconsNames = names
+	cache.selfhstIconsCached = time.Now()
+	log.Printf("      Cached %d selfhst-icons names", len(names))
+
+	return names, nil
 }
 
 // getSimpleIcon tries to find an icon from simple-icons
@@ -79,7 +169,7 @@ func getSimpleIconsSlugs(ctx context.Context, githubClient *github.Client) (map[
 		return cache.simpleIconsSlugs, nil
 	}
 
-	log.Printf("      Fetching simple-icons slugs (cache miss)...")
+	log.Printf("      Fetching simple-icons slugs (cache miss)...\n")
 
 	// Fetch slugs.md from simple-icons repository
 	var fileContent *github.RepositoryContent
@@ -189,7 +279,7 @@ func getDeviconsNames(ctx context.Context, githubClient *github.Client) ([]strin
 		return cache.deviconsNames, nil
 	}
 
-	log.Printf("      Fetching devicons list (cache miss)...")
+	log.Printf("      Fetching devicons list (cache miss)...\n")
 
 	// Fetch icons directory from devicons repository
 	var dirContents []*github.RepositoryContent
