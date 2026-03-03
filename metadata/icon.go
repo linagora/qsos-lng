@@ -64,20 +64,8 @@ func getSelfhstIcon(ctx context.Context, githubClient *github.Client, projectNam
 		return "", err
 	}
 
-	projectNameNormalized := normalizeProjectName(projectName)
-
-	// Try exact match first
-	for _, iconName := range icons {
-		// Check for both original and -light/-dark versions
-		if normalizeProjectName(iconName) == projectNameNormalized {
-			return fmt.Sprintf("https://raw.githubusercontent.com/selfhst/icons/main/svg/%s.svg", iconName), nil
-		}
-		if normalizeProjectName(strings.TrimSuffix(iconName, "-light")) == projectNameNormalized {
-			return fmt.Sprintf("https://raw.githubusercontent.com/selfhst/icons/main/svg/%s.svg", iconName), nil
-		}
-		if normalizeProjectName(strings.TrimSuffix(iconName, "-dark")) == projectNameNormalized {
-			return fmt.Sprintf("https://raw.githubusercontent.com/selfhst/icons/main/svg/%s.svg", iconName), nil
-		}
+	if iconName, ok := findSelfhstIconName(projectName, icons); ok {
+		return fmt.Sprintf("https://raw.githubusercontent.com/selfhst/icons/main/svg/%s.svg", iconName), nil
 	}
 
 	return "", fmt.Errorf("no match found in selfhst/icons")
@@ -328,5 +316,30 @@ func normalizeProjectName(name string) string {
 	name = strings.ReplaceAll(name, "_", "")
 	name = strings.ReplaceAll(name, ".", "")
 	name = strings.ReplaceAll(name, " ", "")
+	return name
+}
+
+func findSelfhstIconName(projectName string, icons []string) (string, bool) {
+	target := normalizeProjectName(projectName)
+	for _, iconName := range icons {
+		if normalizeProjectName(iconName) == target {
+			return iconName, true
+		}
+
+		trimmed := trimIconVariant(iconName)
+		if normalizeProjectName(trimmed) == target {
+			return iconName, true
+		}
+	}
+	return "", false
+}
+
+func trimIconVariant(name string) string {
+	lower := strings.ToLower(name)
+	for _, suffix := range []string{"-light", "-dark"} {
+		if len(lower) > len(suffix) && strings.HasSuffix(lower, suffix) {
+			return name[:len(name)-len(suffix)]
+		}
+	}
 	return name
 }

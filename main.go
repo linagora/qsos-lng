@@ -23,7 +23,8 @@ func usage() {
 	log.Fatalf(`Usage:
 - go run . analyze <owner/repo> for one-shot analysis of a project
 - go run . work for working in background for l'Argus du Libre.
-- go run . retag for regenerating tags on all published projects.
+-	go run . retag for regenerating tags on all published projects.
+-	go run . reicon for regenerating icons on all published projects.
 `)
 }
 
@@ -42,6 +43,8 @@ func main() {
 		analyze(os.Args[2])
 	case "retag":
 		retag()
+	case "reicon":
+		reicon()
 	default:
 		usage()
 	}
@@ -530,6 +533,107 @@ func retag() {
 	}
 
 	fmt.Printf("\nRetag complete!\n")
+}
+
+func reicon() {
+	ctx := context.Background()
+
+	// Setup credentials
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	if githubToken == "" {
+		log.Fatalf("GITHUB_TOKEN environment variable is not set")
+	}
+	githubClient := github.NewClient(nil).WithAuthToken(githubToken)
+
+	// Connect to the database
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		log.Fatalf("DATABASE_URL environment variable is not set")
+	}
+
+	db, err := database.NewDB(ctx, databaseURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close(ctx)
+
+	// Query all published projects
+	rows, err := db.Conn.Query(ctx, `
+		SELECT id, repository_url
+		FROM categories_software
+		WHERE state = 'published' AND repository_url LIKE 'https://github.com/%'
+		ORDER BY id
+	`)
+	if err != nil {
+		log.Fatalf("Failed to query projects: %v", err)
+	}
+	defer rows.Close()
+
+	var projects []database.ProjectInfo
+	for rows.Next() {
+		var p database.ProjectInfo
+		if err := rows.Scan(&p.ID, &p.RepositoryURL); err != nil {
+			log.Fatalf("Failed to scan project: %v", err)
+		}
+		projects = append(projects, p)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("Error iterating projects: %v", err)
+	}
+
+	fmt.Printf("Found %d published projects to reicon\n\n", len(projects))
+
+	for i, project := range projects {
+		// Parse repository URL
+		parsedURL, err := url.Parse(project.RepositoryURL)
+		if err != nil {
+			log.Printf("[%d/%d] ID %d: Failed to parse URL '%s': %v\n", i+1, len(projects), project.ID, project.RepositoryURL, err)
+			continue
+		}
+
+		parts := strings.Split(strings.TrimPrefix(parsedURL.Path, "/"), "/")
+		if len(parts) < 2 {
+			log.Printf("[%d/%d] ID %d: Invalid URL format '%s'\n", i+1, len(projects), project.ID, project.RepositoryURL)
+			continue
+		}
+
+		owner := parts[0]
+		repo := strings.TrimSuffix(parts[1], ".git")
+
+		fmt.Printf("[%d/%d] ID %d: %s/%s\n", i+1, len(projects), project.ID, owner, repo)
+
+		// Get repository info to extract language
+		repository, _, err := githubClient.Repositories.Get(ctx, owner, repo)
+		if err != nil {
+			log.Printf("  Error fetching repository info for icon: %v\n", err)
+			// Continue even if we can't get the language, as GetIconURL handles empty language
+			repository = &github.Repository{}
+		}
+		language := ""
+		if repository.Language != nil {
+			language = *repository.Language
+		}
+
+		// Resolve icon URL
+		iconURL, err := metadata.GetIconURL(ctx, githubClient, owner, repo, language)
+		if err != nil {
+			log.Printf("  Warning: Failed to get icon URL: %v\n", err)
+			continue // Non-fatal, just skip this project's icon
+		}
+
+		if iconURL != "" {
+			_, err = db.Conn.Exec(ctx, "UPDATE categories_software SET logo_url = $1 WHERE id = $2", iconURL, project.ID)
+			if err != nil {
+				log.Printf("  Error saving icon URL to DB: %v\n", err)
+				continue
+			}
+			fmt.Printf("  Icon URL: %s\n", iconURL)
+		} else {
+			fmt.Printf("  No icon found.\n")
+		}
+	}
+
+	fmt.Printf("\nReicon complete!\n")
 }
 
 // createInMemoryLookup creates a simple in-memory metric lookup from config

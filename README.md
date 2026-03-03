@@ -28,6 +28,7 @@ The tool computes normalized scores across three main categories:
    - `go run . analyze minio/minio` for one-shot analysis of a project
    - `go run . work` for background worker processing draft projects
    - `go run . retag` to regenerate AI tags on all published projects
+- `go run . reicon` to regenerate icons on all published projects
 
 ## GitHub Actions Workflow
 
