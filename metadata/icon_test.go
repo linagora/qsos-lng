@@ -10,9 +10,11 @@ func TestFindSelfhstIconName(t *testing.T) {
 		want    string
 		ok      bool
 	}{
-		{name: "direct match", project: "openbao", icons: []string{"OpenBao"}, want: "OpenBao", ok: true},
-		{name: "light variant", project: "OpenBao", icons: []string{"OpenBao-Light"}, want: "OpenBao-Light", ok: true},
-		{name: "dark variant case mix", project: "OpenBao", icons: []string{"openbao-Dark"}, want: "openbao-Dark", ok: true},
+		{name: "direct match", project: "openbao", icons: []string{"openbao"}, want: "openbao", ok: true},
+		{name: "case insensitive", project: "openbao", icons: []string{"OpenBao"}, want: "OpenBao", ok: true},
+		{name: "light variant only", project: "openbao", icons: []string{"openbao-light"}, want: "openbao-light", ok: true},
+		{name: "dark variant case mix", project: "OpenBao", icons: []string{"openbao-dark"}, want: "openbao-dark", ok: true},
+		{name: "plain preferred over variant", project: "openbao", icons: []string{"openbao-light", "openbao", "openbao-dark"}, want: "openbao", ok: true},
 		{name: "no match", project: "OpenBao", icons: []string{"other"}, want: "", ok: false},
 	}
 
@@ -34,9 +36,11 @@ func TestTrimIconVariant(t *testing.T) {
 		input string
 		want  string
 	}{
-		{input: "OpenBao-Light", want: "OpenBao"},
-		{input: "openbao-Dark", want: "openbao"},
-		{input: "OpenBao", want: "OpenBao"},
+		{input: "openbao-light", want: "openbao"},
+		{input: "openbao-dark", want: "openbao"},
+		{input: "openbao", want: "openbao"},
+		{input: "actual-budget-light", want: "actual-budget"},
+		{input: "light", want: "light"}, // too short to be a suffix match
 	}
 
 	for _, tt := range tests {

@@ -71,7 +71,10 @@ func getSelfhstIcon(ctx context.Context, githubClient *github.Client, projectNam
 	return "", fmt.Errorf("no match found in selfhst/icons")
 }
 
-// getSelfhstIconsNames returns cached selfhst-icons names, fetching if needed
+// getSelfhstIconsNames returns cached selfhst-icons names, fetching if needed.
+// It uses the Git Trees API instead of the Contents API because the selfhst/icons
+// svg directory contains thousands of files and the Contents API silently
+// truncates results at 1000 entries.
 func getSelfhstIconsNames(ctx context.Context, githubClient *github.Client) ([]string, error) {
 	cache.mu.RLock()
 	if cache.selfhstIconsNames != nil && time.Since(cache.selfhstIconsCached) < cache.ttl {
@@ -88,34 +91,39 @@ func getSelfhstIconsNames(ctx context.Context, githubClient *github.Client) ([]s
 		return cache.selfhstIconsNames, nil
 	}
 
-	log.Printf("      Fetching selfhst-icons list (cache miss)...\n")
+	log.Printf("      Fetching selfhst-icons list via Git Trees API (cache miss)...\n")
 
-	// Fetch icons directory from selfhst/icons repository
-	var dirContents []*github.RepositoryContent
+	// Use the Git Trees API with recursive=true to get all files in a single call.
+	// The Contents API only returns the first 1000 entries, which misses most icons.
+	var tree *github.Tree
 	for {
 		var err error
-		_, dirContents, _, err = githubClient.Repositories.GetContents(
+		tree, _, err = githubClient.Git.GetTree(
 			ctx,
 			"selfhst",
 			"icons",
-			"svg",
-			&github.RepositoryContentGetOptions{},
+			"main", // branch name works as a tree SHA ref
+			true,   // recursive
 		)
 		if err != nil {
 			if ratelimit.HandleGitHub(err) {
 				continue
 			}
-			return nil, fmt.Errorf("failed to fetch selfhst-icons list: %w", err)
+			return nil, fmt.Errorf("failed to fetch selfhst-icons tree: %w", err)
 		}
 		break
 	}
 
 	var names []string
-	for _, item := range dirContents {
-		if item.Type != nil && *item.Type == "file" && item.Name != nil {
-			name := strings.TrimSuffix(*item.Name, ".svg")
-			names = append(names, name)
+	for _, entry := range tree.Entries {
+		path := entry.GetPath()
+		if !strings.HasPrefix(path, "svg/") || !strings.HasSuffix(path, ".svg") {
+			continue
 		}
+		// Extract the icon name: "svg/openbao-light.svg" -> "openbao-light"
+		name := strings.TrimPrefix(path, "svg/")
+		name = strings.TrimSuffix(name, ".svg")
+		names = append(names, name)
 	}
 
 	cache.selfhstIconsNames = names
@@ -321,11 +329,16 @@ func normalizeProjectName(name string) string {
 
 func findSelfhstIconName(projectName string, icons []string) (string, bool) {
 	target := normalizeProjectName(projectName)
+
+	// First pass: prefer the plain icon (no -light/-dark suffix)
 	for _, iconName := range icons {
 		if normalizeProjectName(iconName) == target {
 			return iconName, true
 		}
+	}
 
+	// Second pass: accept a -light or -dark variant
+	for _, iconName := range icons {
 		trimmed := trimIconVariant(iconName)
 		if normalizeProjectName(trimmed) == target {
 			return iconName, true
