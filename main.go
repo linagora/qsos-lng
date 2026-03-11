@@ -211,6 +211,7 @@ func buildSourceAdapters(githubClient *github.Client, githubToken string, docker
 		sources.NewLizardSource(dockerTimeoutMinutes),
 		sources.NewScorecardSource(githubToken, dockerTimeoutMinutes),
 		sources.NewDocumentationSource(githubClient),
+		sources.NewLLMDebtSource(githubClient),
 	}
 }
 
@@ -376,6 +377,7 @@ func analyze(project string) {
 		sources.NewLizardSource(dockerTimeout),
 		sources.NewScorecardSource(githubToken, dockerTimeout),
 		sources.NewDocumentationSource(githubClient),
+		sources.NewLLMDebtSource(githubClient),
 	}
 
 	// Collect all metrics

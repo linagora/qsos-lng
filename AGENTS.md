@@ -127,6 +127,13 @@ formula = """
 - AI-generated tags (3-5, reuses existing)
 - Icon URL resolution (simple-icons → devicons fallback)
 
+**LLM Debt Analysis** (`pkg/sources/llm_debt.go`):
+- Two-stage LLM analysis:
+  1. Stage 1: LLM selects 8-12 key files from repo tree (prioritizing core business logic, large files)
+  2. Stage 2: LLM analyzes selected files, returns 1-5 debt score and key observations
+- Emits `ai_technical_debt` metric and logs reasoning to stdout
+- Uses existing `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL` env vars
+
 ### Execution Pipeline
 
 **Sequential Steps:**
@@ -179,7 +186,7 @@ formula = """
 - `readme_quality`, `readme_sections`, `docs_directory`, `accessibility`, `multilang_readmes`
 
 **Technical Quality:**
-- `lines_of_code`, `test_lines_of_code`, `test_ratio`, `complexity`, `high_complexity_functions`, `functions`
+- `lines_of_code`, `test_lines_of_code`, `test_ratio`, `complexity`, `high_complexity_functions`, `functions`, `ai_technical_debt`
 
 **Security (Scorecard):**
 - `scorecard_vulnerabilities`, `scorecard_security_policy`, `scorecard_binary_artifacts`
@@ -189,7 +196,7 @@ formula = """
 ### Field Slugs (Score Categories)
 
 **Community:** `maturity`, `activity`, `popularity`, `contributors`, `documentation`
-**Tech:** `size`, `complexity`, `tests`
+**Tech:** `size`, `complexity`, `tests`, `technical-debt`
 **Security:** `vulnerabilities`, `security-policy`, `binary-artifacts`, `branch-protection`, `code-review`, `pinned-dependencies`, `packaging`, `signed-releases`
 
 ## How to Customize

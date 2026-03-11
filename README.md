@@ -8,6 +8,7 @@ multiple sources:
 - **GitHub API**: Repository metadata, commit history, stars, and contributor activity
 - **Tokei + Lizard**: Code quality metrics (Tokei for fast line counting, Lizard for cyclomatic complexity)
 - **OpenSSF Scorecard**: Security best practices and vulnerability checks
+- **LLM Debt Analysis**: Two-stage AI analysis of source files to assess technical debt
 
 The tool computes normalized scores across three main categories:
 

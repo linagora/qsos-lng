@@ -65,6 +65,13 @@ fields = [
     { api_field = "multilang_readmes", metric_slug = "multilang_readmes" }
 ]
 
+# LLM-based technical debt analysis
+[[metrics]]
+name = "llm_debt_analysis"
+fields = [
+    { api_field = "ai_technical_debt", metric_slug = "ai_technical_debt" }
+]
+
 # ============================================================================
 # SCORING RULES
 # ============================================================================
@@ -113,6 +120,11 @@ formula = "compute_score(metric.complexity, [5, 10, 20, 30], 'smaller_is_better'
 [[scores]]
 slug = "tests"
 formula = "compute_score(metric.test_ratio, [0.1, 0.4, 0.8, 1.6], 'bigger_is_better')"
+
+[[scores]]
+slug = "technical-debt"
+formula = "metric.ai_technical_debt"
+
 
 # Security Category
 
