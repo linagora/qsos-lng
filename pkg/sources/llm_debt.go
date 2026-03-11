@@ -147,14 +147,29 @@ const maxLinesPerFile = 300
 func (s *LLMDebtSource) Fetch(ctx context.Context, execCtx *engine.ExecutionContext) ([]engine.MetricResult, error) {
 	log.Printf("  Fetching file tree for debt analysis...\n")
 
+	// Validate API key is set
+	if os.Getenv("AI_API_KEY") == "" {
+		return nil, fmt.Errorf("AI_API_KEY environment variable not set")
+	}
+
 	// Stage 1: fetch file tree and ask LLM to pick files
 	treeText, err := s.buildTreePrompt(ctx, execCtx.Owner, execCtx.Repo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build tree prompt: %w", err)
 	}
 
+	// Limit tree size to avoid exceeding LLM context window.
+	// 40KB ≈ ~10K tokens, safe for most models with room for the response.
+	const maxTreeBytes = 40000
+	if len(treeText) > maxTreeBytes {
+		log.Printf("  Warning: tree still too large after filtering (%d bytes), truncating to %dKB\n", len(treeText), maxTreeBytes/1000)
+		treeText = treeText[:maxTreeBytes] + "\n... (truncated)"
+	}
+
 	aiClient := s.newAIClient()
-	selectedPaths, err := s.callFileSelection(ctx, aiClient, treeText)
+	model := aiModel()
+	log.Printf("  Using AI model: %s\n", model)
+	selectedPaths, err := s.callFileSelection(ctx, aiClient, model, treeText)
 	if err != nil {
 		return nil, fmt.Errorf("file selection LLM call failed: %w", err)
 	}
@@ -167,7 +182,13 @@ func (s *LLMDebtSource) Fetch(ctx context.Context, execCtx *engine.ExecutionCont
 	}
 
 	filesText := s.buildFilesPrompt(files)
-	score, keyPoints, err := s.callDebtScoring(ctx, aiClient, filesText)
+
+	// Limit files text to avoid token limits (roughly 150KB)
+	if len(filesText) > 150000 {
+		log.Printf("  Warning: files content too large (%d bytes), this may exceed token limits\n", len(filesText))
+	}
+
+	score, keyPoints, err := s.callDebtScoring(ctx, aiClient, model, filesText)
 	if err != nil {
 		return nil, fmt.Errorf("debt scoring LLM call failed: %w", err)
 	}
@@ -195,10 +216,12 @@ func aiModel() string {
 	if m := os.Getenv("AI_MODEL"); m != "" {
 		return m
 	}
-	return "gpt-oss-120b"
+	return "google/gemini-2.5-flash"
 }
 
 // buildTreePrompt fetches the repo file tree from GitHub and formats it for the LLM.
+// It pre-filters irrelevant files (vendor, docs, assets, tests, non-code extensions)
+// to reduce token usage and avoid exceeding the model's context window.
 func (s *LLMDebtSource) buildTreePrompt(ctx context.Context, owner, repo string) (string, error) {
 	tree, _, err := s.client.Git.GetTree(ctx, owner, repo, "HEAD", true)
 	if err != nil {
@@ -207,19 +230,28 @@ func (s *LLMDebtSource) buildTreePrompt(ctx context.Context, owner, repo string)
 
 	var sb strings.Builder
 	sb.WriteString("Repository file tree (path, size in bytes):\n")
+	skipped := 0
 	for _, entry := range tree.Entries {
 		if entry.GetType() != "blob" {
 			continue
 		}
-		fmt.Fprintf(&sb, "%s (%d bytes)\n", entry.GetPath(), entry.GetSize())
+		path := entry.GetPath()
+		if shouldSkipPath(path) || shouldSkipExtension(path) || isTestFile(path) {
+			skipped++
+			continue
+		}
+		fmt.Fprintf(&sb, "%s (%d bytes)\n", path, entry.GetSize())
+	}
+	if skipped > 0 {
+		log.Printf("  Filtered %d irrelevant files from tree prompt\n", skipped)
 	}
 	return sb.String(), nil
 }
 
 // callFileSelection calls the LLM with the file tree and returns selected paths.
-func (s *LLMDebtSource) callFileSelection(ctx context.Context, client *openaigo.Client, treeText string) ([]string, error) {
+func (s *LLMDebtSource) callFileSelection(ctx context.Context, client *openaigo.Client, model, treeText string) ([]string, error) {
 	req := openaigo.ChatRequest{
-		Model:     aiModel(),
+		Model:     model,
 		MaxTokens: 1024,
 		Messages: []openaigo.Message{
 			{Role: "system", Content: promptFileSelection},
@@ -228,12 +260,16 @@ func (s *LLMDebtSource) callFileSelection(ctx context.Context, client *openaigo.
 	}
 	resp, err := client.Chat(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("AI error: %w", err)
+		return nil, fmt.Errorf("AI API error (model: %s): %w", model, err)
 	}
 	if len(resp.Choices) == 0 {
 		return nil, fmt.Errorf("AI returned no choices")
 	}
-	return parseFileSelection(resp.Choices[0].Message.Content)
+	content := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if content == "" {
+		return nil, fmt.Errorf("AI returned empty response (finish_reason=%s) — the prompt likely exceeded the model's context window; try a smaller repository or a model with a larger context", resp.Choices[0].FinishReason)
+	}
+	return parseFileSelection(content)
 }
 
 // fetchFileContents fetches file contents in parallel via GitHub API.
@@ -284,9 +320,9 @@ func (s *LLMDebtSource) buildFilesPrompt(files map[string]string) string {
 }
 
 // callDebtScoring calls the LLM with the file contents and returns a score and key points.
-func (s *LLMDebtSource) callDebtScoring(ctx context.Context, client *openaigo.Client, filesText string) (float64, []string, error) {
+func (s *LLMDebtSource) callDebtScoring(ctx context.Context, client *openaigo.Client, model, filesText string) (float64, []string, error) {
 	req := openaigo.ChatRequest{
-		Model:     aiModel(),
+		Model:     model,
 		MaxTokens: 1024,
 		Messages: []openaigo.Message{
 			{Role: "system", Content: promptDebtScoring},
@@ -295,10 +331,14 @@ func (s *LLMDebtSource) callDebtScoring(ctx context.Context, client *openaigo.Cl
 	}
 	resp, err := client.Chat(ctx, req)
 	if err != nil {
-		return 0, nil, fmt.Errorf("AI error: %w", err)
+		return 0, nil, fmt.Errorf("AI API error (model: %s): %w", model, err)
 	}
 	if len(resp.Choices) == 0 {
 		return 0, nil, fmt.Errorf("AI returned no choices")
 	}
-	return parseDebtResponse(resp.Choices[0].Message.Content)
+	scoringContent := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if scoringContent == "" {
+		return 0, nil, fmt.Errorf("AI returned empty response (finish_reason=%s) — the prompt likely exceeded the model's context window", resp.Choices[0].FinishReason)
+	}
+	return parseDebtResponse(scoringContent)
 }

@@ -106,6 +106,93 @@ func TestParseFileSelection(t *testing.T) {
 	})
 }
 
+func TestShouldSkipPath(t *testing.T) {
+	skip := []string{
+		"vendor/github.com/pkg/errors/errors.go",
+		"node_modules/react/index.js",
+		".github/workflows/ci.yml",
+		"docs/README.md",
+		"assets/logo.png",
+		"third_party/lib/foo.c",
+		"examples/demo.py",
+		"benchmarks/perf_test.go",
+		"migrations/001_init.sql",
+		// Nested paths
+		"src/vendor/dep/lib.go",
+		"project/.github/ci.yml",
+	}
+	for _, path := range skip {
+		if !shouldSkipPath(path) {
+			t.Errorf("expected %q to be skipped", path)
+		}
+	}
+
+	keep := []string{
+		"src/core/engine.go",
+		"pkg/sources/github.go",
+		"internal/handler/service.go",
+		"lib/parser.py",
+		"main.go",
+		"cmd/server/main.go",
+	}
+	for _, path := range keep {
+		if shouldSkipPath(path) {
+			t.Errorf("expected %q to be kept", path)
+		}
+	}
+}
+
+func TestShouldSkipExtension(t *testing.T) {
+	skip := []string{
+		"logo.png", "image.jpg", "font.woff2",
+		"archive.tar.gz", "lib.so", "app.exe",
+		"data.csv", "yarn.lock", "bundle.min.js",
+		"doc.pdf",
+	}
+	for _, path := range skip {
+		if !shouldSkipExtension(path) {
+			t.Errorf("expected %q to be skipped by extension", path)
+		}
+	}
+
+	keep := []string{
+		"main.go", "index.ts", "app.py", "server.rs",
+		"handler.java", "model.rb", "Makefile",
+	}
+	for _, path := range keep {
+		if shouldSkipExtension(path) {
+			t.Errorf("expected %q to be kept by extension", path)
+		}
+	}
+}
+
+func TestIsTestFile(t *testing.T) {
+	tests := []string{
+		"pkg/sources/llm_debt_test.go",
+		"src/test_utils.py",
+		"src/app.test.js",
+		"src/app.spec.ts",
+		"tests/integration/test_api.py",
+		"__tests__/component.test.jsx",
+	}
+	for _, path := range tests {
+		if !isTestFile(path) {
+			t.Errorf("expected %q to be detected as test file", path)
+		}
+	}
+
+	nonTests := []string{
+		"src/core/engine.go",
+		"pkg/sources/github.go",
+		"main.go",
+	}
+	for _, path := range nonTests {
+		if isTestFile(path) {
+			t.Errorf("expected %q to NOT be detected as test file", path)
+		}
+	}
+}
+
 func TestTruncateLines(t *testing.T) {
 	t.Run("under limit", func(t *testing.T) {
 		input := "line1\nline2\nline3"
