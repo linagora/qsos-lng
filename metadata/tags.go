@@ -21,8 +21,10 @@ type DBQuerier interface {
 const promptTagsTemplate = `
 You are an agent whose role is to analyze an Open-Source project and generate 2 to 4 relevant tags that describe it.
 
-Return ONLY a valid JSON array of strings, nothing else. Example format:
+RETURN ONLY a valid JSON array of strings and NOTHING ELSE. Example format:
 ["metrics database", "monitoring"]
+
+Do NOT include any surrounding text, explanation, or Markdown code fences (triple backticks), and do NOT wrap the JSON in single backticks or other inline code markers.
 
 Tags should be:
 - Short (1-3 words maximum)
@@ -128,15 +130,58 @@ func generateTags(ctx context.Context, client *openaigo.Client, content string, 
 		return nil, fmt.Errorf("AI error: no response")
 	}
 
-	// Parse JSON response
+	// Parse JSON response defensively: models sometimes wrap JSON in markdown
 	var tags []string
 	responseContent := strings.TrimSpace(response.Choices[0].Message.Content)
 	if responseContent == "" {
 		return nil, fmt.Errorf("AI returned empty content (finish_reason: %s)", response.Choices[0].FinishReason)
 	}
-	err = json.Unmarshal([]byte(responseContent), &tags)
+
+	// Helper: clean common markdown/code-fence wrappers
+	cleanForJSON := func(s string) string {
+		s = strings.TrimSpace(s)
+		// If the model returned a fenced block (```...```), extract inner content
+		if strings.HasPrefix(s, "```") {
+			last := strings.LastIndex(s, "```")
+			if last > 3 {
+				inner := s[3:last]
+				inner = strings.TrimSpace(inner)
+				// strip optional leading "json"
+				if strings.HasPrefix(inner, "json") {
+					inner = strings.TrimSpace(inner[4:])
+				}
+				return inner
+			}
+		}
+		// Remove stray backticks
+		s = strings.ReplaceAll(s, "`", "")
+		return strings.TrimSpace(s)
+	}
+
+	cleaned := cleanForJSON(responseContent)
+
+	// First try: unmarshal cleaned content
+	err = json.Unmarshal([]byte(cleaned), &tags)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse tags JSON: %w (response: %s)", err, responseContent)
+		// Second try: extract first JSON array between '[' and ']' and unmarshal that
+		if start := strings.Index(cleaned, "["); start != -1 {
+			if end := strings.LastIndex(cleaned, "]"); end != -1 && end > start {
+				candidate := cleaned[start : end+1]
+				candidate = strings.TrimSpace(candidate)
+				err2 := json.Unmarshal([]byte(candidate), &tags)
+				if err2 == nil {
+					err = nil
+				}
+			}
+		}
+	}
+	if err != nil {
+		// Truncate cleaned response for logs to avoid huge dumps
+		display := cleaned
+		if len(display) > 500 {
+			display = display[:500] + "..."
+		}
+		return nil, fmt.Errorf("failed to parse tags JSON: %w (cleaned response: %s)", err, display)
 	}
 
 	// Validate and clean tags
