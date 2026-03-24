@@ -82,10 +82,7 @@ func GetTags(ctx context.Context, client *github.Client, db DBQuerier, owner, re
 		return nil, fmt.Errorf("fetch existing tags: %w", err)
 	}
 
-	aiClient := openaigo.NewClient(os.Getenv("AI_API_KEY"))
-	if u := os.Getenv("AI_BASE_URL"); u != "" {
-		aiClient.BaseURL = u
-	}
+	aiClient := newAIClient()
 
 	tags, err := generateTags(ctx, aiClient, content, existingTags)
 	if err != nil {
@@ -111,7 +108,7 @@ func generateTags(ctx context.Context, client *openaigo.Client, content string, 
 	// Build the prompt with existing tags
 	prompt := fmt.Sprintf(promptTagsTemplate, existingTagsList)
 
-	model := "gpt-oss-120b"
+	model := "mistralai/mistral-small-2603"
 	if m := os.Getenv("AI_MODEL"); m != "" {
 		model = m
 	}

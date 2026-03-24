@@ -12,7 +12,7 @@ QSOS::LNG analyzes open-source projects using a **TOML-based configuration syste
 **Environment Variables:**
 - Required: `GITHUB_TOKEN`, `AI_API_KEY`
 - Work mode: `DATABASE_URL`
-- Optional: `AI_BASE_URL`, `AI_MODEL` (defaults to `gpt-oss-120b`)
+- Optional: `AI_BASE_URL` (defaults to `https://openrouter.ai/api/v1`), `AI_MODEL` (defaults to `mistralai/mistral-small-2603`)
 
 ## Architecture
 

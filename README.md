@@ -22,9 +22,9 @@ The tool computes normalized scores across three main categories:
 2. Configure with env variables:
    - `DATABASE_URL` for the PostgreSQL database connection string (e.g., `postgres://user:password@localhost:5432/dbname`)
    - `GITHUB_TOKEN` for the GitHub API token
-   - `AI_API_KEY` for the AI API key (used for generating summaries)
-   - `AI_BASE_URL` (optional) for a custom AI API base URL
-   - `AI_MODEL` (optional) for specifying a particular AI model
+    - `AI_API_KEY` for the AI API key (used for generating summaries)
+    - `AI_BASE_URL` (optional) for a custom AI API base URL (defaults to `https://openrouter.ai/api/v1`)
+    - `AI_MODEL` (optional) for specifying a particular AI model (defaults to `mistralai/mistral-small-2603`)
 3. Run:
    - `go run . analyze minio/minio` for one-shot analysis of a project
    - `go run . work` for background worker processing draft projects
@@ -54,4 +54,3 @@ Configure these in your repository settings (Settings → Secrets and variables 
 3. Click "Run workflow"
 4. Enter the project to analyze (e.g., `minio/minio`)
 5. View results in the workflow log
-

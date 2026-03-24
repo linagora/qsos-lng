@@ -207,6 +207,9 @@ func (s *LLMDebtSource) newAIClient() *openaigo.Client {
 	client := openaigo.NewClient(os.Getenv("AI_API_KEY"))
 	if u := os.Getenv("AI_BASE_URL"); u != "" {
 		client.BaseURL = u
+	} else {
+		// Default to OpenRouter API base when not configured
+		client.BaseURL = "https://openrouter.ai/api/v1"
 	}
 	return client
 }
@@ -216,7 +219,8 @@ func aiModel() string {
 	if m := os.Getenv("AI_MODEL"); m != "" {
 		return m
 	}
-	return "google/gemini-2.5-flash"
+	// Default to Mistral Small 4
+	return "mistralai/mistral-small-2603"
 }
 
 // buildTreePrompt fetches the repo file tree from GitHub and formats it for the LLM.

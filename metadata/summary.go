@@ -32,6 +32,18 @@ type BilingualSummary struct {
 	English string
 }
 
+// newAIClient constructs an openaigo client using environment variables and
+// applies a sensible default base URL when AI_BASE_URL is not set.
+func newAIClient() *openaigo.Client {
+	c := openaigo.NewClient(os.Getenv("AI_API_KEY"))
+	if u := os.Getenv("AI_BASE_URL"); u != "" {
+		c.BaseURL = u
+	} else {
+		c.BaseURL = "https://openrouter.ai/api/v1"
+	}
+	return c
+}
+
 // GetSummary fetches and summarizes the project README using AI
 func GetSummary(ctx context.Context, client *github.Client, owner, repo string) (string, error) {
 	readme, _, err := client.Repositories.GetReadme(ctx, owner, repo, nil)
@@ -43,10 +55,7 @@ func GetSummary(ctx context.Context, client *github.Client, owner, repo string) 
 		return "", err
 	}
 
-	aiClient := openaigo.NewClient(os.Getenv("AI_API_KEY"))
-	if u := os.Getenv("AI_BASE_URL"); u != "" {
-		aiClient.BaseURL = u
-	}
+	aiClient := newAIClient()
 
 	summary, err := summarize(ctx, aiClient, content, "fr")
 	if err != nil {
@@ -66,10 +75,7 @@ func GetBilingualSummary(ctx context.Context, client *github.Client, owner, repo
 		return nil, err
 	}
 
-	aiClient := openaigo.NewClient(os.Getenv("AI_API_KEY"))
-	if u := os.Getenv("AI_BASE_URL"); u != "" {
-		aiClient.BaseURL = u
-	}
+	aiClient := newAIClient()
 
 	// Generate French summary
 	frenchSummary, err := summarize(ctx, aiClient, content, "fr")
@@ -105,7 +111,7 @@ func summarize(ctx context.Context, client *openaigo.Client, content string, loc
 		prompt = promptTLDREnglish
 	}
 
-	model := "gpt-oss-120b"
+	model := "mistralai/mistral-small-2603"
 	if m := os.Getenv("AI_MODEL"); m != "" {
 		model = m
 	}
